@@ -30,11 +30,11 @@ class FmpTest(unittest.TestCase):
             "fmp-test-key",
             transport=_fixture_transport(
                 {
-                    "profile/RAW1": "official_profile_raw1.json",
-                    "quote/RAW1": "official_quote_raw1.json",
-                    "historical-price-full/RAW1": "official_historical_price_full_raw1.json",
-                    "income-statement/RAW1": "official_income_statement_raw1.json",
-                    "cash-flow-statement/RAW1": "official_cash_flow_statement_raw1.json",
+                    "profile": "official_profile_raw1.json",
+                    "quote": "official_quote_raw1.json",
+                    "historical-price-eod/full": "official_historical_price_full_raw1.json",
+                    "income-statement": "official_income_statement_raw1.json",
+                    "cash-flow-statement": "official_cash_flow_statement_raw1.json",
                 }
             ),
         )
@@ -61,11 +61,11 @@ class FmpTest(unittest.TestCase):
             config=config,
             transport=_fixture_transport(
                 {
-                    "profile/RAW1": "profile_raw1.json",
-                    "quote/RAW1": "quote_raw1.json",
-                    "historical-price-full/RAW1": "historical_price_full_raw1.json",
-                    "income-statement/RAW1": "income_statement_raw1.json",
-                    "cash-flow-statement/RAW1": "cash_flow_statement_raw1.json",
+                    "profile": "profile_raw1.json",
+                    "quote": "quote_raw1.json",
+                    "historical-price-eod/full": "historical_price_full_raw1.json",
+                    "income-statement": "income_statement_raw1.json",
+                    "cash-flow-statement": "cash_flow_statement_raw1.json",
                 }
             ),
         )
@@ -95,11 +95,11 @@ class FmpTest(unittest.TestCase):
                 ),
                 transport=_fixture_transport(
                     {
-                        "profile/RAW1": "profile_raw1.json",
-                        "quote/RAW1": "quote_raw1.json",
-                        "historical-price-full/RAW1": "historical_price_full_raw1.json",
-                        "income-statement/RAW1": "income_statement_raw1.json",
-                        "cash-flow-statement/RAW1": "cash_flow_statement_raw1.json",
+                        "profile": "profile_raw1.json",
+                        "quote": "quote_raw1.json",
+                        "historical-price-eod/full": "historical_price_full_raw1.json",
+                        "income-statement": "income_statement_raw1.json",
+                        "cash-flow-statement": "cash_flow_statement_raw1.json",
                     }
                 ),
             )
@@ -109,11 +109,11 @@ class FmpTest(unittest.TestCase):
             "fmp-test-key",
             transport=_fixture_transport(
                 {
-                    "profile/RAW1": "profile_raw1.json",
-                    "quote/RAW1": "quote_raw1.json",
-                    "historical-price-full/RAW1": "historical_price_full_raw1.json",
-                    "income-statement/RAW1": "income_statement_raw1_unsorted.json",
-                    "cash-flow-statement/RAW1": "cash_flow_statement_raw1_year_mismatch.json",
+                    "profile": "profile_raw1.json",
+                    "quote": "quote_raw1.json",
+                    "historical-price-eod/full": "historical_price_full_raw1.json",
+                    "income-statement": "income_statement_raw1_unsorted.json",
+                    "cash-flow-statement": "cash_flow_statement_raw1_year_mismatch.json",
                 }
             ),
         )
@@ -129,11 +129,11 @@ class FmpTest(unittest.TestCase):
             "fmp-test-key",
             transport=_fixture_transport(
                 {
-                    "profile/RAW1": "profile_raw1.json",
-                    "quote/RAW1": "quote_raw1.json",
-                    "historical-price-full/RAW1": "historical_price_full_raw1_empty.json",
-                    "income-statement/RAW1": "income_statement_raw1.json",
-                    "cash-flow-statement/RAW1": "cash_flow_statement_raw1.json",
+                    "profile": "profile_raw1.json",
+                    "quote": "quote_raw1.json",
+                    "historical-price-eod/full": "historical_price_full_raw1_empty.json",
+                    "income-statement": "income_statement_raw1.json",
+                    "cash-flow-statement": "cash_flow_statement_raw1.json",
                 }
             ),
         )

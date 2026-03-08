@@ -13,27 +13,25 @@ from edenfintech_scanner_bootstrap.structured_analysis import finalize_structure
 
 def _mock_fmp_transport(endpoint: str, params: dict[str, str]):
     responses = {
-        "profile/RAW1": [
+        "profile": [
             {
                 "symbol": "RAW1",
                 "companyName": "Raw One Holdings",
                 "industry": "Industrial Components",
             }
         ],
-        "quote/RAW1": [
+        "quote": [
             {
                 "symbol": "RAW1",
                 "price": 24.0,
             }
         ],
-        "historical-price-full/RAW1": {
-            "historical": [
-                {"date": "2026-03-07", "close": 24.0},
-                {"date": "2025-06-01", "close": 31.0},
-                {"date": "2024-04-01", "close": 92.31},
-            ],
-        },
-        "income-statement/RAW1": [
+        "historical-price-eod/full": [
+            {"date": "2026-03-07", "close": 24.0},
+            {"date": "2025-06-01", "close": 31.0},
+            {"date": "2024-04-01", "close": 92.31},
+        ],
+        "income-statement": [
             {
                 "date": "2025-12-31",
                 "revenue": 3_400_000_000,
@@ -45,7 +43,7 @@ def _mock_fmp_transport(endpoint: str, params: dict[str, str]):
                 "weightedAverageShsOutDil": 112_000_000,
             },
         ],
-        "cash-flow-statement/RAW1": [
+        "cash-flow-statement": [
             {
                 "date": "2025-12-31",
                 "freeCashFlow": 340_000_000,

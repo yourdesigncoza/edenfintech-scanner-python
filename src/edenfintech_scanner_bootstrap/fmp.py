@@ -39,11 +39,17 @@ def _year_from_date(value: object) -> str | None:
 
 def _default_transport(endpoint: str, params: dict[str, str]) -> list[dict] | dict:
     query = parse.urlencode(params)
-    url = f"https://financialmodelingprep.com/api/v3/{endpoint}?{query}"
+    url = f"https://financialmodelingprep.com/stable/{endpoint}?{query}"
     http_request = request.Request(url, headers={"Accept": "application/json"}, method="GET")
     try:
         with request.urlopen(http_request, timeout=60) as response:
             return json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        body_preview = body.strip().replace("\n", " ")
+        if len(body_preview) > 200:
+            body_preview = f"{body_preview[:200]}..."
+        raise RuntimeError(f"FMP request failed for {endpoint}: HTTP {exc.code}; {body_preview}") from exc
     except error.URLError as exc:
         raise RuntimeError(f"FMP request failed for {endpoint}: {exc}") from exc
 
@@ -60,34 +66,37 @@ class FmpClient:
         return payload
 
     def quote(self, ticker: str) -> dict:
-        payload = self._get(f"quote/{ticker}")
+        payload = self._get("quote", symbol=ticker)
         if not isinstance(payload, list) or not payload:
             raise RuntimeError(f"FMP quote response missing for {ticker}")
         return payload[0]
 
     def profile(self, ticker: str) -> dict:
-        payload = self._get(f"profile/{ticker}")
+        payload = self._get("profile", symbol=ticker)
         if not isinstance(payload, list) or not payload:
             raise RuntimeError(f"FMP profile response missing for {ticker}")
         return payload[0]
 
     def historical_prices(self, ticker: str) -> list[dict]:
-        payload = self._get(f"historical-price-full/{ticker}", serietype="line")
-        if not isinstance(payload, dict) or "historical" not in payload:
+        payload = self._get("historical-price-eod/full", symbol=ticker)
+        if isinstance(payload, list):
+            historical = payload
+        elif isinstance(payload, dict) and "historical" in payload:
+            historical = payload["historical"]
+        else:
             raise RuntimeError(f"FMP historical price response missing for {ticker}")
-        historical = payload["historical"]
         if not isinstance(historical, list):
             raise RuntimeError(f"FMP historical price response malformed for {ticker}")
         return historical
 
     def income_statements(self, ticker: str, limit: int = 5) -> list[dict]:
-        payload = self._get(f"income-statement/{ticker}", limit=str(limit), period="annual")
+        payload = self._get("income-statement", symbol=ticker, limit=str(limit), period="annual")
         if not isinstance(payload, list) or not payload:
             raise RuntimeError(f"FMP income statement response missing for {ticker}")
         return _sorted_desc(payload)
 
     def cash_flow_statements(self, ticker: str, limit: int = 5) -> list[dict]:
-        payload = self._get(f"cash-flow-statement/{ticker}", limit=str(limit), period="annual")
+        payload = self._get("cash-flow-statement", symbol=ticker, limit=str(limit), period="annual")
         if not isinstance(payload, list) or not payload:
             raise RuntimeError(f"FMP cash flow response missing for {ticker}")
         return _sorted_desc(payload)
