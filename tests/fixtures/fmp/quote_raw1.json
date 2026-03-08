@@ -1,0 +1,26 @@
+[
+  {
+    "symbol": "RAW1",
+    "name": "Raw One Holdings",
+    "price": 24.0,
+    "changesPercentage": -4.11,
+    "change": -1.03,
+    "dayLow": 23.8,
+    "dayHigh": 25.2,
+    "yearHigh": 92.31,
+    "yearLow": 18.4,
+    "marketCap": 2640000000,
+    "priceAvg50": 29.7,
+    "priceAvg200": 41.8,
+    "exchange": "NASDAQ",
+    "volume": 1265300,
+    "avgVolume": 1450020,
+    "open": 25.0,
+    "previousClose": 25.03,
+    "eps": 0.88,
+    "pe": 27.27,
+    "earningsAnnouncement": "2026-02-20T00:00:00.000+0000",
+    "sharesOutstanding": 110000000,
+    "timestamp": 1772937600
+  }
+]

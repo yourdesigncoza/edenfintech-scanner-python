@@ -1,0 +1,29 @@
+{
+  "symbol": "RAW1",
+  "historical": [
+    {
+      "date": "2026-03-07",
+      "close": 24.0,
+      "volume": 1265300,
+      "changePercent": -4.11,
+      "label": "March 07, 26",
+      "changeOverTime": -0.7416
+    },
+    {
+      "date": "2025-06-01",
+      "close": 31.0,
+      "volume": 992500,
+      "changePercent": -0.8,
+      "label": "June 01, 25",
+      "changeOverTime": -0.6642
+    },
+    {
+      "date": "2024-04-01",
+      "close": 92.31,
+      "volume": 2233400,
+      "changePercent": 2.12,
+      "label": "April 01, 24",
+      "changeOverTime": 0.0
+    }
+  ]
+}

@@ -1,70 +1,27 @@
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 
 from edenfintech_scanner_bootstrap.config import AppConfig
 from edenfintech_scanner_bootstrap.fmp import FmpClient, build_fmp_bundle_with_config, build_raw_candidate_from_fmp
 
 
-def _mock_fmp_transport(endpoint: str, params: dict[str, str]):
-    responses = {
-        "profile/RAW1": [
-            {
-                "symbol": "RAW1",
-                "companyName": "Raw One Holdings",
-                "industry": "Industrial Components",
-                "sector": "Industrials",
-            }
-        ],
-        "quote/RAW1": [
-            {
-                "symbol": "RAW1",
-                "price": 24.0,
-            }
-        ],
-        "historical-price-full/RAW1": {
-            "symbol": "RAW1",
-            "historical": [
-                {"date": "2026-03-07", "close": 24.0},
-                {"date": "2025-06-01", "close": 31.0},
-                {"date": "2024-04-01", "close": 92.31},
-            ],
-        },
-        "income-statement/RAW1": [
-            {
-                "date": "2025-12-31",
-                "revenue": 3_400_000_000,
-                "weightedAverageShsOutDil": 110_000_000,
-            },
-            {
-                "date": "2024-12-31",
-                "revenue": 3_100_000_000,
-                "weightedAverageShsOutDil": 112_000_000,
-            },
-            {
-                "date": "2023-12-31",
-                "revenue": 2_900_000_000,
-                "weightedAverageShsOutDil": 114_000_000,
-            },
-        ],
-        "cash-flow-statement/RAW1": [
-            {
-                "date": "2025-12-31",
-                "freeCashFlow": 340_000_000,
-            },
-            {
-                "date": "2024-12-31",
-                "freeCashFlow": 248_000_000,
-            },
-            {
-                "date": "2023-12-31",
-                "freeCashFlow": 203_000_000,
-            },
-        ],
-    }
-    if endpoint not in responses:
-        raise AssertionError(f"unexpected endpoint: {endpoint}")
-    return responses[endpoint]
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "fmp"
+
+
+def _load_fixture(name: str):
+    return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
+
+
+def _fixture_transport(mapping: dict[str, str]):
+    def transport(endpoint: str, params: dict[str, str]):
+        if endpoint not in mapping:
+            raise AssertionError(f"unexpected endpoint: {endpoint}")
+        return _load_fixture(mapping[endpoint])
+
+    return transport
 
 
 class FmpTest(unittest.TestCase):
@@ -79,7 +36,15 @@ class FmpTest(unittest.TestCase):
         bundle = build_fmp_bundle_with_config(
             ["RAW1"],
             config=config,
-            transport=_mock_fmp_transport,
+            transport=_fixture_transport(
+                {
+                    "profile/RAW1": "profile_raw1.json",
+                    "quote/RAW1": "quote_raw1.json",
+                    "historical-price-full/RAW1": "historical_price_full_raw1.json",
+                    "income-statement/RAW1": "income_statement_raw1.json",
+                    "cash-flow-statement/RAW1": "cash_flow_statement_raw1.json",
+                }
+            ),
         )
 
         self.assertEqual(bundle["scan_parameters"]["api"], "Financial Modeling Prep")
@@ -105,34 +70,30 @@ class FmpTest(unittest.TestCase):
                     openai_api_key=None,
                     codex_judge_model="gpt-5-codex",
                 ),
-                transport=_mock_fmp_transport,
+                transport=_fixture_transport(
+                    {
+                        "profile/RAW1": "profile_raw1.json",
+                        "quote/RAW1": "quote_raw1.json",
+                        "historical-price-full/RAW1": "historical_price_full_raw1.json",
+                        "income-statement/RAW1": "income_statement_raw1.json",
+                        "cash-flow-statement/RAW1": "cash_flow_statement_raw1.json",
+                    }
+                ),
             )
 
     def test_raw_candidate_handles_unsorted_statements_and_year_mismatch(self) -> None:
-        def transport(endpoint: str, params: dict[str, str]):
-            responses = {
-                "profile/RAW1": [{"industry": "Industrial Components"}],
-                "quote/RAW1": [{"price": 24.0}],
-                "historical-price-full/RAW1": {
-                    "historical": [
-                        {"date": "2024-04-01", "close": 92.31},
-                        {"date": "2026-03-07", "close": 24.0},
-                    ]
-                },
-                "income-statement/RAW1": [
-                    {"date": "2023-12-31", "revenue": 2_900_000_000, "weightedAverageShsOutDil": 114_000_000},
-                    {"date": "2025-12-31", "revenue": 3_400_000_000, "weightedAverageShsOutDil": 110_000_000},
-                    {"date": "2024-12-31", "revenue": 3_100_000_000, "weightedAverageShsOutDil": 112_000_000},
-                ],
-                "cash-flow-statement/RAW1": [
-                    {"date": "2023-09-30", "freeCashFlow": 203_000_000},
-                    {"date": "2025-09-30", "freeCashFlow": 340_000_000},
-                    {"date": "2024-09-30", "freeCashFlow": 248_000_000},
-                ],
-            }
-            return responses[endpoint]
-
-        client = FmpClient("fmp-test-key", transport=transport)
+        client = FmpClient(
+            "fmp-test-key",
+            transport=_fixture_transport(
+                {
+                    "profile/RAW1": "profile_raw1.json",
+                    "quote/RAW1": "quote_raw1.json",
+                    "historical-price-full/RAW1": "historical_price_full_raw1.json",
+                    "income-statement/RAW1": "income_statement_raw1_unsorted.json",
+                    "cash-flow-statement/RAW1": "cash_flow_statement_raw1_year_mismatch.json",
+                }
+            ),
+        )
         candidate = build_raw_candidate_from_fmp("RAW1", client)
 
         self.assertEqual(candidate["fmp_context"]["derived"]["shares_m_latest"], 110.0)
@@ -141,21 +102,18 @@ class FmpTest(unittest.TestCase):
         self.assertEqual(len(candidate["fmp_context"]["derived"]["fcf_margin_history_pct"]), 3)
 
     def test_raw_candidate_raises_controlled_error_for_missing_price_history(self) -> None:
-        def transport(endpoint: str, params: dict[str, str]):
-            responses = {
-                "profile/RAW1": [{"industry": "Industrial Components"}],
-                "quote/RAW1": [{"price": 24.0}],
-                "historical-price-full/RAW1": {"historical": []},
-                "income-statement/RAW1": [
-                    {"date": "2025-12-31", "revenue": 3_400_000_000, "weightedAverageShsOutDil": 110_000_000}
-                ],
-                "cash-flow-statement/RAW1": [
-                    {"date": "2025-12-31", "freeCashFlow": 340_000_000}
-                ],
-            }
-            return responses[endpoint]
-
-        client = FmpClient("fmp-test-key", transport=transport)
+        client = FmpClient(
+            "fmp-test-key",
+            transport=_fixture_transport(
+                {
+                    "profile/RAW1": "profile_raw1.json",
+                    "quote/RAW1": "quote_raw1.json",
+                    "historical-price-full/RAW1": "historical_price_full_raw1_empty.json",
+                    "income-statement/RAW1": "income_statement_raw1.json",
+                    "cash-flow-statement/RAW1": "cash_flow_statement_raw1.json",
+                }
+            ),
+        )
         with self.assertRaisesRegex(RuntimeError, "historical prices did not contain usable close data"):
             build_raw_candidate_from_fmp("RAW1", client)
 

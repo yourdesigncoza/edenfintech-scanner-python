@@ -15,6 +15,7 @@ markdown summaries without changing the underlying methodology.
 - A CLI for validating assets, fetching FMP and Gemini raw bundles, generating structured-analysis overlays, merging/importing bundles, and executing scans from JSON input
 - A machine-draft field-generation layer that emits auditable structured-analysis drafts with provenance from merged raw evidence
 - GitHub Actions CI that runs unit tests, asset validation, and regression checks on every push and pull request
+- Sanitized wire-format FMP and Gemini fixtures that harden adapter tests against response-shape drift
 
 ## Commands
 
@@ -49,6 +50,7 @@ assets/
   rules/
 src/edenfintech_scanner_bootstrap/
 tests/
+  fixtures/
 ```
 
 ## Scan Input Model
@@ -110,3 +112,7 @@ boundary stays explicit. If you later apply a structured overlay, its
 `source_bundle` fingerprint must match the freshly fetched raw bundle.
 `run-live-scan` now also writes `structured-analysis-draft.json` beside the
 manual template so the machine-draft path is visible without bypassing review.
+
+Adapter tests now use sanitized wire-format fixture payloads under
+`tests/fixtures/fmp/` and `tests/fixtures/gemini/` so response-shape variance is
+covered without introducing live network dependence into CI.

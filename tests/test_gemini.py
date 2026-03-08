@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from pathlib import Path
 
 from edenfintech_scanner_bootstrap.config import AppConfig
 from edenfintech_scanner_bootstrap.gemini import (
@@ -11,20 +12,11 @@ from edenfintech_scanner_bootstrap.gemini import (
 )
 
 
-def _gemini_response(payload: dict) -> dict:
-    return {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {
-                            "text": json.dumps(payload),
-                        }
-                    ]
-                }
-            }
-        ]
-    }
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "gemini"
+
+
+def _load_fixture(name: str) -> dict:
+    return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
 
 
 class GeminiTest(unittest.TestCase):
@@ -33,29 +25,7 @@ class GeminiTest(unittest.TestCase):
 
         def transport(url: str, headers: dict[str, str], payload: dict) -> dict:
             seen_requests.append({"url": url, "headers": headers, "payload": payload})
-            return _gemini_response(
-                {
-                    "research_notes": [
-                        {
-                            "claim": "Recent filings highlight steady vertical software adoption.",
-                            "source_title": "Company investor presentation",
-                            "source_url": "https://example.com/investor",
-                        }
-                    ],
-                    "catalyst_evidence": [
-                        {
-                            "claim": "A platform rollout is scheduled for 2026.",
-                            "source_title": "Product launch note",
-                            "source_url": "https://example.com/launch",
-                        }
-                    ],
-                    "risk_evidence": [],
-                    "management_observations": [],
-                    "moat_observations": [],
-                    "precedent_observations": [],
-                    "epistemic_anchors": [],
-                }
-            )
+            return _load_fixture("generate_content_rest_raw1.json")
 
         bundle = build_gemini_bundle_with_config(
             ["RAW1"],
@@ -97,18 +67,30 @@ class GeminiTest(unittest.TestCase):
 
     def test_rejects_methodology_keys_in_model_output(self) -> None:
         def transport(url: str, headers: dict[str, str], payload: dict) -> dict:
-            return _gemini_response(
+            return {
+                "candidates": [
                 {
-                    "research_notes": [],
-                    "catalyst_evidence": [],
-                    "risk_evidence": [],
-                    "management_observations": [],
-                    "moat_observations": [],
-                    "precedent_observations": [],
-                    "epistemic_anchors": [],
-                    "screening_inputs": {"solvency": "pass"},
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps(
+                                        {
+                                            "research_notes": [],
+                                            "catalyst_evidence": [],
+                                            "risk_evidence": [],
+                                            "management_observations": [],
+                                            "moat_observations": [],
+                                            "precedent_observations": [],
+                                            "epistemic_anchors": [],
+                                            "screening_inputs": {"solvency": "pass"},
+                                        }
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
                 }
-            )
 
         with self.assertRaisesRegex(ValueError, "forbidden methodology keys: screening_inputs"):
             build_gemini_bundle_with_config(
@@ -124,19 +106,7 @@ class GeminiTest(unittest.TestCase):
 
     def test_builds_bundle_from_sdk_style_text_field(self) -> None:
         def transport(url: str, headers: dict[str, str], payload: dict) -> dict:
-            return {
-                "text": json.dumps(
-                    {
-                        "research_notes": [],
-                        "catalyst_evidence": [],
-                        "risk_evidence": [],
-                        "management_observations": [],
-                        "moat_observations": [],
-                        "precedent_observations": [],
-                        "epistemic_anchors": [],
-                    }
-                )
-            }
+            return _load_fixture("generate_content_sdk_raw1.json")
 
         bundle = build_gemini_bundle_with_config(
             ["RAW1"],
