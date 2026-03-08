@@ -36,6 +36,17 @@ def validate_judge_result(result: dict) -> dict:
     if not isinstance(result["reroute_reason"], str):
         raise ValueError("judge reroute_reason must be a string")
 
+    if result["verdict"] == "APPROVE":
+        if result["target_stage"] != "approve":
+            raise ValueError("judge APPROVE verdict must target approve")
+        if result["reroute_reason"]:
+            raise ValueError("judge APPROVE verdict must not include a reroute_reason")
+    else:
+        if result["target_stage"] == "approve":
+            raise ValueError("judge REVISE verdict must target a prior stage")
+        if not result["reroute_reason"]:
+            raise ValueError("judge REVISE verdict must include a reroute_reason")
+
     extra_keys = set(result) - set(contract["outputs"]["required"])
     if extra_keys:
         raise ValueError(f"judge result contains unsupported keys: {sorted(extra_keys)}")
@@ -82,6 +93,20 @@ def local_judge(report: dict, execution_log: dict) -> dict:
             "target_stage": target_stage,
             "findings": findings,
             "reroute_reason": reroute_reason,
+        }
+    )
+
+
+def _safe_fallback_judge(report: dict, execution_log: dict, reason_code: str, detail: str) -> dict:
+    local_result = local_judge(report, execution_log)
+    findings = [f"Codex judge unavailable; deterministic fallback used: {detail}"]
+    findings.extend(local_result["findings"])
+    return validate_judge_result(
+        {
+            "verdict": "REVISE",
+            "target_stage": "report_assembly",
+            "findings": findings,
+            "reroute_reason": reason_code,
         }
     )
 
@@ -184,8 +209,10 @@ def codex_judge(
         response_payload = judge_transport(request_payload, app_config)
         raw_text = _extract_response_text(response_payload)
         return validate_judge_result(json.loads(raw_text))
-    except Exception:
-        return local_judge(report, execution_log)
+    except RuntimeError as exc:
+        return _safe_fallback_judge(report, execution_log, "judge_transport_unavailable", str(exc))
+    except Exception as exc:
+        return _safe_fallback_judge(report, execution_log, "judge_payload_invalid", str(exc))
 
 
 def run_judge_file(

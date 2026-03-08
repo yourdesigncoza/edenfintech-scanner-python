@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from edenfintech_scanner_bootstrap.config import load_config
+from edenfintech_scanner_bootstrap.config import discover_dotenv_path, load_config
 from edenfintech_scanner_bootstrap.importers import build_scan_input, build_scan_input_file
 from edenfintech_scanner_bootstrap.pipeline import run_scan
 
@@ -31,6 +31,30 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.gemini_api_key, "gemini-test")
         self.assertEqual(config.openai_api_key, "openai-test")
         self.assertEqual(config.codex_judge_model, "gpt-5-codex")
+
+    def test_discover_dotenv_path_finds_repo_root_from_outside_repo(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        dotenv_path = repo_root / ".env"
+        original_text = dotenv_path.read_text() if dotenv_path.exists() else None
+        dotenv_path.write_text("OPENAI_API_KEY=repo-root-key\n")
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                previous_cwd = Path.cwd()
+                try:
+                    os.chdir(tmpdir)
+                    discovered = discover_dotenv_path()
+                    self.assertEqual(discovered, dotenv_path)
+                    with patch.dict(os.environ, {}, clear=True):
+                        config = load_config()
+                finally:
+                    os.chdir(previous_cwd)
+        finally:
+            if original_text is None:
+                dotenv_path.unlink(missing_ok=True)
+            else:
+                dotenv_path.write_text(original_text)
+
+        self.assertEqual(config.openai_api_key, "repo-root-key")
 
 
 class ImporterE2ETest(unittest.TestCase):

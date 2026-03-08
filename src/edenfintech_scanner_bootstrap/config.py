@@ -31,8 +31,46 @@ def _parse_dotenv_line(line: str) -> tuple[str, str] | None:
     return key, value
 
 
+def _looks_like_project_root(path: Path) -> bool:
+    return (path / "pyproject.toml").exists() and (path / "assets" / "methodology" / "scan-report.schema.json").exists()
+
+
+def discover_project_root(start: Path | None = None) -> Path | None:
+    search_roots: list[Path] = []
+    if start is not None:
+        search_roots.append(start.resolve())
+    search_roots.append(Path.cwd().resolve())
+    search_roots.append(Path(__file__).resolve().parents[2])
+
+    seen: set[Path] = set()
+    for root in search_roots:
+        for candidate in [root, *root.parents]:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            if _looks_like_project_root(candidate):
+                return candidate
+    return None
+
+
+def discover_dotenv_path(start: Path | None = None) -> Path | None:
+    explicit = os.environ.get("EDENFINTECH_SCANNER_DOTENV")
+    if explicit:
+        path = Path(explicit).expanduser().resolve()
+        return path if path.exists() else None
+
+    project_root = discover_project_root(start)
+    if project_root is None:
+        return None
+
+    dotenv_path = project_root / ".env"
+    return dotenv_path if dotenv_path.exists() else None
+
+
 def load_dotenv(dotenv_path: Path | None = None, *, override: bool = False) -> Path | None:
-    path = dotenv_path or Path.cwd() / ".env"
+    path = dotenv_path or discover_dotenv_path()
+    if path is None:
+        return None
     if not path.exists():
         return None
 

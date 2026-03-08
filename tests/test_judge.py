@@ -13,6 +13,27 @@ FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures" / "raw"
 
 
 class JudgeTest(unittest.TestCase):
+    def test_validate_judge_result_rejects_contradictory_fields(self) -> None:
+        with self.assertRaisesRegex(ValueError, "APPROVE verdict must target approve"):
+            validate_judge_result(
+                {
+                    "verdict": "APPROVE",
+                    "target_stage": "report_assembly",
+                    "findings": [],
+                    "reroute_reason": "",
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "REVISE verdict must target a prior stage"):
+            validate_judge_result(
+                {
+                    "verdict": "REVISE",
+                    "target_stage": "approve",
+                    "findings": ["Need richer evidence."],
+                    "reroute_reason": "judge_payload_invalid",
+                }
+            )
+
     def test_local_judge_returns_contract_shape_only(self) -> None:
         result = local_judge(
             {
@@ -49,7 +70,34 @@ class JudgeTest(unittest.TestCase):
             transport=lambda payload, app_config: {"output": [{"type": "message", "content": [{"type": "output_text", "text": "{\"verdict\": \"APPROVE\"}"}]}]},
         )
 
-        self.assertEqual(result, local_judge(report, execution_log))
+        self.assertEqual(result["verdict"], "REVISE")
+        self.assertEqual(result["target_stage"], "report_assembly")
+        self.assertEqual(result["reroute_reason"], "judge_payload_invalid")
+        self.assertTrue(any("Codex judge unavailable" in item for item in result["findings"]))
+
+    def test_codex_judge_transport_failure_is_signaled_explicitly(self) -> None:
+        config = AppConfig(
+            fmp_api_key=None,
+            gemini_api_key=None,
+            openai_api_key="test-key",
+            codex_judge_model="gpt-5-codex",
+        )
+        result = codex_judge(
+            {
+                "ranked_candidates": [],
+                "pending_human_review": [],
+                "rejected_at_analysis_detail_packets": [],
+                "current_holding_overlays": [],
+            },
+            {"entries": [], "candidate_count": 0, "survivor_count": 0},
+            config=config,
+            transport=lambda payload, app_config: (_ for _ in ()).throw(RuntimeError("network unavailable")),
+        )
+
+        self.assertEqual(result["verdict"], "REVISE")
+        self.assertEqual(result["target_stage"], "report_assembly")
+        self.assertEqual(result["reroute_reason"], "judge_transport_unavailable")
+        self.assertTrue(any("network unavailable" in item for item in result["findings"]))
 
     def test_codex_judge_accepts_valid_transport_output(self) -> None:
         config = AppConfig(
