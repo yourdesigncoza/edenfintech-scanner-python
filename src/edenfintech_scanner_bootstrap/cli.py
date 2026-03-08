@@ -19,6 +19,7 @@ from .structured_analysis import (
     build_structured_analysis_template_file,
     finalize_structured_analysis_file,
     review_structured_analysis_file,
+    suggest_review_notes_file,
 )
 from .validation import validate_assets
 
@@ -180,6 +181,20 @@ def _cmd_review_structured_analysis(
     return 0
 
 
+def _cmd_suggest_review_notes(
+    structured_analysis_path: str,
+    json_out: str | None,
+    markdown_out: str | None,
+) -> int:
+    report = suggest_review_notes_file(
+        Path(structured_analysis_path),
+        json_out=Path(json_out) if json_out else None,
+        markdown_out=Path(markdown_out) if markdown_out else None,
+    )
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 def _cmd_run_judge(report_path: str, execution_log_path: str) -> int:
     load_config()
     result = run_judge_file(Path(report_path), Path(execution_log_path))
@@ -306,6 +321,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use FIELD_PATH=NOTE or TICKER:FIELD_PATH=NOTE to update review_note without changing judgments.",
     )
 
+    suggest_review_notes = subparsers.add_parser("suggest-review-notes")
+    suggest_review_notes.add_argument("structured_analysis_path")
+    suggest_review_notes.add_argument("--json-out")
+    suggest_review_notes.add_argument("--markdown-out")
+
     finalize_structured_analysis = subparsers.add_parser("finalize-structured-analysis")
     finalize_structured_analysis.add_argument("structured_analysis_path")
     finalize_structured_analysis.add_argument("--reviewer", required=True)
@@ -383,6 +403,12 @@ def main(argv: list[str] | None = None) -> int:
             args.markdown_out,
             args.overlay_out,
             args.set_note,
+        )
+    if args.command == "suggest-review-notes":
+        return _cmd_suggest_review_notes(
+            args.structured_analysis_path,
+            args.json_out,
+            args.markdown_out,
         )
     if args.command == "finalize-structured-analysis":
         return _cmd_finalize_structured_analysis(

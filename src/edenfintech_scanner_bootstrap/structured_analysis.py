@@ -309,6 +309,91 @@ def render_review_structured_analysis_markdown(report: dict) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def suggest_review_notes(payload: dict) -> dict:
+    validate_structured_analysis(payload)
+    structured_candidates = payload.get("structured_candidates")
+    if not isinstance(structured_candidates, list) or not structured_candidates:
+        raise ValueError("structured_payload.structured_candidates must be a non-empty list")
+
+    candidates: list[dict] = []
+    total_suggestions = 0
+    for candidate in structured_candidates:
+        if not isinstance(candidate, dict):
+            raise ValueError("structured_payload.structured_candidates[] must be objects")
+        ticker = candidate.get("ticker")
+        provenance_by_path = _provenance_by_path(candidate)
+        suggestions: list[dict] = []
+        for field_path in REQUIRED_PROVENANCE_FIELDS:
+            item = provenance_by_path.get(field_path)
+            if item is None:
+                continue
+            review_note = item.get("review_note")
+            if isinstance(review_note, str) and review_note.strip():
+                continue
+            evidence_refs = item.get("evidence_refs") if isinstance(item.get("evidence_refs"), list) else []
+            evidence_summary = "; ".join(
+                ref.get("summary", "")
+                for ref in evidence_refs
+                if isinstance(ref, dict) and isinstance(ref.get("summary"), str) and ref.get("summary").strip()
+            ) or "available evidence references"
+            rationale = item.get("rationale") if isinstance(item.get("rationale"), str) else ""
+            suggested_note = (
+                f"Reviewer checked {field_path} against {evidence_summary}. "
+                f"Review focus: {rationale or 'confirm the field remains appropriate against the cited evidence.'}"
+            ).strip()
+            suggestions.append(
+                {
+                    "field_path": field_path,
+                    "status": item.get("status", "UNKNOWN"),
+                    "suggested_review_note": suggested_note,
+                }
+            )
+        total_suggestions += len(suggestions)
+        candidates.append(
+            {
+                "ticker": ticker,
+                "suggestions": suggestions,
+            }
+        )
+
+    return {
+        "title": payload.get("title"),
+        "scan_date": payload.get("scan_date"),
+        "completion_status": payload.get("completion_status"),
+        "total_suggestions": total_suggestions,
+        "candidates": candidates,
+    }
+
+
+def render_review_note_suggestions_markdown(report: dict) -> str:
+    lines = [
+        "# Review Note Suggestions",
+        "",
+        f"- Title: {report.get('title', '')}",
+        f"- Scan Date: {report.get('scan_date', '')}",
+        f"- Completion Status: {report.get('completion_status', '')}",
+        f"- Total Suggestions: {report.get('total_suggestions', 0)}",
+        "",
+    ]
+    for candidate in report.get("candidates", []):
+        lines.extend(
+            [
+                f"## {candidate.get('ticker', 'Unknown Ticker')}",
+                "",
+            ]
+        )
+        suggestions = candidate.get("suggestions", [])
+        if not suggestions:
+            lines.append("- No missing required review_note entries.")
+            lines.append("")
+            continue
+        for suggestion in suggestions:
+            lines.append(f"- `{suggestion.get('field_path', '')}` [{suggestion.get('status', '')}]")
+            lines.append(f"  Suggested note: {suggestion.get('suggested_review_note', '')}")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def apply_review_note_updates(payload: dict, updates: list[dict[str, str]]) -> dict:
     validate_structured_analysis(payload)
     if not updates:
@@ -691,4 +776,21 @@ def review_structured_analysis_file(
     if markdown_out is not None:
         markdown_out.parent.mkdir(parents=True, exist_ok=True)
         markdown_out.write_text(render_review_structured_analysis_markdown(report), encoding="utf-8")
+    return report
+
+
+def suggest_review_notes_file(
+    structured_analysis_path: Path,
+    *,
+    json_out: Path | None = None,
+    markdown_out: Path | None = None,
+) -> dict:
+    payload = load_json(structured_analysis_path)
+    report = suggest_review_notes(payload)
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    if markdown_out is not None:
+        markdown_out.parent.mkdir(parents=True, exist_ok=True)
+        markdown_out.write_text(render_review_note_suggestions_markdown(report), encoding="utf-8")
     return report

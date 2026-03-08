@@ -11,6 +11,9 @@ from edenfintech_scanner_bootstrap.structured_analysis import (
     render_review_structured_analysis_markdown,
     review_structured_analysis,
     review_structured_analysis_file,
+    render_review_note_suggestions_markdown,
+    suggest_review_notes,
+    suggest_review_notes_file,
 )
 
 
@@ -112,6 +115,45 @@ class ReviewHelperTest(unittest.TestCase):
         self.assertIn("## RAW1", markdown)
         self.assertIn("MACHINE_DRAFT", markdown)
         self.assertIn("missing review_note", markdown)
+
+    def test_suggest_review_notes_only_covers_missing_entries(self) -> None:
+        payload = load_json(DRAFT_FIXTURE_PATH)
+        payload["structured_candidates"][0]["field_provenance"][0]["review_note"] = "Already reviewed."
+
+        report = suggest_review_notes(payload)
+
+        self.assertEqual(report["total_suggestions"], 25)
+        first_candidate = report["candidates"][0]
+        field_paths = {item["field_path"] for item in first_candidate["suggestions"]}
+        self.assertNotIn("screening_inputs.industry_understandable", field_paths)
+        self.assertIn("screening_inputs.solvency", field_paths)
+
+    def test_render_review_note_suggestions_markdown_contains_sections(self) -> None:
+        report = suggest_review_notes(load_json(DRAFT_FIXTURE_PATH))
+
+        markdown = render_review_note_suggestions_markdown(report)
+
+        self.assertIn("# Review Note Suggestions", markdown)
+        self.assertIn("## RAW1", markdown)
+        self.assertIn("Suggested note:", markdown)
+        self.assertIn("`screening_inputs.solvency`", markdown)
+
+    def test_suggest_review_notes_file_writes_json_and_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay_path = Path(tmpdir) / "overlay.json"
+            json_out = Path(tmpdir) / "review-note-suggestions.json"
+            markdown_out = Path(tmpdir) / "review-note-suggestions.md"
+            overlay_path.write_text(json.dumps(load_json(DRAFT_FIXTURE_PATH), indent=2), encoding="utf-8")
+
+            report = suggest_review_notes_file(
+                overlay_path,
+                json_out=json_out,
+                markdown_out=markdown_out,
+            )
+
+            self.assertTrue(json_out.exists())
+            self.assertTrue(markdown_out.exists())
+            self.assertEqual(report["total_suggestions"], 26)
 
 
 if __name__ == "__main__":

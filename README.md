@@ -34,6 +34,7 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli merge-raw-bundles fmp
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-structured-analysis-template merged-raw.json --json-out structured-analysis.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli generate-structured-analysis-draft merged-raw.json --json-out structured-analysis-draft.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli review-structured-analysis structured-analysis-reviewed.json --json-out review-checklist.json --markdown-out review-checklist.md --overlay-out structured-analysis-reviewed-notes.json --set-note screening_inputs.solvency="Reviewer checked solvency against cash generation history."
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli suggest-review-notes structured-analysis-reviewed.json --json-out review-note-suggestions.json --markdown-out review-note-suggestions.md
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli finalize-structured-analysis structured-analysis-reviewed.json --reviewer "Analyst Name" --json-out structured-analysis-finalized.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-scan-input raw-input.json --json-out input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
@@ -109,6 +110,11 @@ a checklist of required provenance entries, surfaces which ones are still
 provenance statuses, or completion state. JSON remains the source of truth, and
 `--markdown-out` is only a rendered review artifact from the same checklist
 report object.
+
+`suggest-review-notes` is a separate non-mutating helper. It emits suggested
+`review_note` scaffolds only for required provenance entries that still lack a
+note, based on the existing provenance rationale and evidence references. It
+does not change overlays, statuses, field values, or completion state.
 
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the
