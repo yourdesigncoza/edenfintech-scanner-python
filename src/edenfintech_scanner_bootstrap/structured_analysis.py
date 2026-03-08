@@ -631,7 +631,10 @@ def review_structured_analysis_file(
     note_updates: list[dict[str, str]] | None = None,
 ) -> dict:
     payload = load_json(structured_analysis_path)
-    updated_payload = apply_review_note_updates(payload, note_updates or [])
+    resolved_updates = note_updates or []
+    if resolved_updates and overlay_out is None:
+        raise ValueError("overlay_out is required when note_updates are provided")
+    updated_payload = apply_review_note_updates(payload, resolved_updates)
     if overlay_out is not None:
         overlay_out.parent.mkdir(parents=True, exist_ok=True)
         overlay_out.write_text(json.dumps(updated_payload, indent=2))

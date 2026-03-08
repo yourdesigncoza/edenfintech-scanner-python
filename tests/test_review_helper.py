@@ -75,6 +75,23 @@ class ReviewHelperTest(unittest.TestCase):
             self.assertTrue(updated_overlay_path.exists())
             self.assertEqual(report["summary"]["missing_review_notes"], 25)
 
+    def test_review_structured_analysis_file_requires_overlay_out_for_note_updates(self) -> None:
+        payload = load_json(DRAFT_FIXTURE_PATH)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay_path = Path(tmpdir) / "overlay.json"
+            overlay_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "overlay_out is required when note_updates are provided"):
+                review_structured_analysis_file(
+                    overlay_path,
+                    note_updates=[
+                        {
+                            "field_path": "screening_inputs.solvency",
+                            "review_note": "Reviewer checked solvency against cash generation history.",
+                        }
+                    ],
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

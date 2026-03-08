@@ -166,6 +166,8 @@ def _cmd_review_structured_analysis(
     set_note: list[str] | None,
 ) -> int:
     updates = [_parse_review_note_update(spec) for spec in (set_note or [])]
+    if updates and not overlay_out:
+        raise ValueError("--overlay-out is required when --set-note is used")
     report = review_structured_analysis_file(
         Path(structured_analysis_path),
         json_out=Path(json_out) if json_out else None,
