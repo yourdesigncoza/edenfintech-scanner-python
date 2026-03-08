@@ -1,9 +1,9 @@
-# EdenFinTech Scanner Python Bootstrap
+# EdenFinTech Scanner Python
 
-This repository is the pre-port hardening layer for the standalone Python scanner.
-It does not execute the full scanner yet. It packages the methodology assets,
-stage contracts, deterministic rule definitions, and regression fixtures that the
-Python implementation will use as its source of truth.
+This repository now contains a deterministic Python scan pipeline built from the
+vendored EdenFinTech methodology assets. It consumes structured research inputs,
+applies the stage contracts locally, and emits JSON-first scan reports plus
+markdown summaries without changing the underlying methodology.
 
 ## Included
 
@@ -11,14 +11,19 @@ Python implementation will use as its source of truth.
 - Machine-readable stage contracts for scan orchestration
 - Canonical rulebook aligned to `strategy-rules.md`
 - Regression fixtures copied from existing scan artifacts
-- A small Python CLI to validate assets and run fixture checks
+- A deterministic Python pipeline for screening, analysis, epistemic review, and report assembly
+- A CLI for validating assets, running regressions, and executing scans from JSON input
 
 ## Commands
 
 ```bash
-python -m edenfintech_scanner_bootstrap.cli validate-assets
-python -m edenfintech_scanner_bootstrap.cli run-regression
-python -m edenfintech_scanner_bootstrap.cli show-contract screening
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-assets
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-regression
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-contract screening
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-template
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-schema
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-scan input.json --json-out report.json --markdown-out report.md
 ```
 
 ## Layout
@@ -33,8 +38,17 @@ src/edenfintech_scanner_bootstrap/
 tests/
 ```
 
-## Purpose
+## Scan Input Model
 
-These assets exist to make the later Python port more deterministic without
-changing EdenFinTech's methodology. If a contract or rule conflicts with the
-vendored `strategy-rules.md`, the methodology file wins.
+`run-scan` expects a structured JSON payload. Each candidate must include
+screening data; names that pass screening must also include analysis inputs
+(`base_case`, `worst_case`, `probability`, catalyst/risk fields) and an
+`epistemic_review` object with the five PCS answers.
+
+Use `show-scan-template` to generate a working example payload and
+`show-scan-schema` to inspect the versioned contract in
+`assets/methodology/scan-input.schema.json`. `validate-scan-input` performs
+schema validation plus stage-aware runtime checks before a scan is run. The
+pipeline does not fetch market data or research on its own. If a helper or
+contract ever disagrees with the vendored `strategy-rules.md`, the methodology
+file wins.

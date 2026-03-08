@@ -28,6 +28,14 @@ def rules_root() -> Path:
     return assets_root() / "rules"
 
 
+def scan_input_schema_path() -> Path:
+    return methodology_root() / "scan-input.schema.json"
+
+
+def scan_report_schema_path() -> Path:
+    return methodology_root() / "scan-report.schema.json"
+
+
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text())
 

@@ -14,6 +14,7 @@ EXPECTED_CONTRACTS = {
 }
 
 EXPECTED_METHOD_FILES = {
+    "scan-input.schema.json",
     "strategy-rules.md",
     "scoring-formulas.md",
     "scan-report.schema.json",
