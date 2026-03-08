@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 from urllib import error, request
@@ -151,6 +152,14 @@ def _extract_response_text(response_payload: dict) -> str:
     raise ValueError("OpenAI judge response did not contain output text")
 
 
+def _extract_structured_execution_log(markdown_text: str) -> dict | None:
+    pattern = re.compile(r"## Structured Execution Log\s+```json\s*(\{.*?\})\s*```", re.DOTALL)
+    match = pattern.search(markdown_text)
+    if not match:
+        return None
+    return json.loads(match.group(1))
+
+
 def openai_judge_transport(request_payload: dict, config: AppConfig) -> dict:
     config.require("openai_api_key")
     http_request = request.Request(
@@ -227,8 +236,11 @@ def run_judge_file(
         execution_log_wrapper = load_json(execution_log_path)
         execution_log = execution_log_wrapper.get("execution_log", execution_log_wrapper)
     else:
-        execution_log = {
-            "source_path": str(execution_log_path),
-            "content": load_text(execution_log_path),
-        }
+        markdown_text = load_text(execution_log_path)
+        execution_log = _extract_structured_execution_log(markdown_text)
+        if execution_log is None:
+            execution_log = {
+                "source_path": str(execution_log_path),
+                "content": markdown_text,
+            }
     return codex_judge(report, execution_log, config=config, transport=transport)

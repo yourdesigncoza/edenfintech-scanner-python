@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from edenfintech_scanner_bootstrap.config import discover_dotenv_path, load_config
+from edenfintech_scanner_bootstrap.config import AppConfig, discover_dotenv_path, load_config
 from edenfintech_scanner_bootstrap.importers import build_scan_input, build_scan_input_file
 from edenfintech_scanner_bootstrap.pipeline import run_scan
 
@@ -33,26 +33,19 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.codex_judge_model, "gpt-5-codex")
 
     def test_discover_dotenv_path_finds_repo_root_from_outside_repo(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        dotenv_path = repo_root / ".env"
-        original_text = dotenv_path.read_text() if dotenv_path.exists() else None
-        dotenv_path.write_text("OPENAI_API_KEY=repo-root-key\n")
-        try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                previous_cwd = Path.cwd()
-                try:
-                    os.chdir(tmpdir)
-                    discovered = discover_dotenv_path()
-                    self.assertEqual(discovered, dotenv_path)
-                    with patch.dict(os.environ, {}, clear=True):
-                        config = load_config()
-                finally:
-                    os.chdir(previous_cwd)
-        finally:
-            if original_text is None:
-                dotenv_path.unlink(missing_ok=True)
-            else:
-                dotenv_path.write_text(original_text)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake_repo = Path(tmpdir) / "fake-repo"
+            (fake_repo / "assets" / "methodology").mkdir(parents=True)
+            (fake_repo / "assets" / "methodology" / "scan-report.schema.json").write_text("{}")
+            (fake_repo / "pyproject.toml").write_text("[project]\nname='fake'\n")
+            dotenv_path = fake_repo / ".env"
+            dotenv_path.write_text("OPENAI_API_KEY=repo-root-key\n")
+
+            discovered = discover_dotenv_path(fake_repo / "nested" / "deeper")
+            self.assertEqual(discovered, dotenv_path)
+
+            with patch.dict(os.environ, {}, clear=True):
+                config = load_config(discovered)
 
         self.assertEqual(config.openai_api_key, "repo-root-key")
 
@@ -65,7 +58,15 @@ class ImporterE2ETest(unittest.TestCase):
         self.assertEqual(scan_input["candidates"][0]["ticker"], "RAW1")
         self.assertEqual(scan_input["candidates"][0]["analysis"]["base_case"]["multiple"], 20.0)
 
-        artifacts = run_scan(scan_input)
+        artifacts = run_scan(
+            scan_input,
+            judge_config=AppConfig(
+                fmp_api_key=None,
+                gemini_api_key=None,
+                openai_api_key=None,
+                codex_judge_model="gpt-5-codex",
+            ),
+        )
 
         self.assertEqual(len(artifacts.report_json["ranked_candidates"]), 1)
         ranked = artifacts.report_json["ranked_candidates"][0]

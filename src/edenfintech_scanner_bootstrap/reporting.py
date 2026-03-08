@@ -137,6 +137,11 @@ def render_execution_log_markdown(report: dict, execution_log: dict, judge: dict
     lines.extend(
         [
             "",
+            "## Structured Execution Log",
+            "```json",
+            _pretty_json(execution_log),
+            "```",
+            "",
             "## Report Snapshot",
             "```json",
             _pretty_json(

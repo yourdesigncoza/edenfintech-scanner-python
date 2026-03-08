@@ -5,7 +5,17 @@ import json
 import unittest
 from pathlib import Path
 
+from edenfintech_scanner_bootstrap.config import AppConfig
 from edenfintech_scanner_bootstrap.pipeline import run_scan, run_scan_file
+
+
+def _no_judge_config() -> AppConfig:
+    return AppConfig(
+        fmp_api_key=None,
+        gemini_api_key=None,
+        openai_api_key=None,
+        codex_judge_model="gpt-5-codex",
+    )
 
 
 def _base_payload() -> dict:
@@ -55,7 +65,7 @@ class ScanPipelineTest(unittest.TestCase):
         ]
 
         with self.assertRaisesRegex(ValueError, "analysis"):
-            run_scan(payload)
+            run_scan(payload, judge_config=_no_judge_config())
 
     def test_screening_rejection_requires_only_screening_payload(self) -> None:
         payload = _base_payload()
@@ -81,7 +91,7 @@ class ScanPipelineTest(unittest.TestCase):
             }
         ]
 
-        artifacts = run_scan(payload)
+        artifacts = run_scan(payload, judge_config=_no_judge_config())
 
         self.assertEqual(len(artifacts.report_json["rejected_at_screening"]), 1)
         self.assertEqual(artifacts.report_json["rejected_at_screening"][0]["ticker"], "SCRN")
@@ -145,7 +155,7 @@ class ScanPipelineTest(unittest.TestCase):
             }
         ]
 
-        artifacts = run_scan(payload)
+        artifacts = run_scan(payload, judge_config=_no_judge_config())
 
         self.assertEqual(artifacts.report_json["ranked_candidates"], [])
         self.assertEqual(len(artifacts.report_json["pending_human_review"]), 1)
@@ -222,7 +232,7 @@ class ScanPipelineTest(unittest.TestCase):
             }
         ]
 
-        artifacts = run_scan(payload)
+        artifacts = run_scan(payload, judge_config=_no_judge_config())
 
         self.assertEqual(len(artifacts.report_json["ranked_candidates"]), 1)
         ranked = artifacts.report_json["ranked_candidates"][0]
@@ -302,7 +312,7 @@ class ScanPipelineTest(unittest.TestCase):
             }
         ]
 
-        artifacts = run_scan(payload)
+        artifacts = run_scan(payload, judge_config=_no_judge_config())
 
         overlays = {item["ticker"]: item for item in artifacts.report_json["current_holding_overlays"]}
         self.assertEqual(overlays["EXC"]["status_in_scan"], "PENDING_HUMAN_REVIEW")
@@ -373,6 +383,7 @@ class ScanPipelineTest(unittest.TestCase):
                 json_out=report_path,
                 markdown_out=markdown_path,
                 execution_log_out=execution_log_path,
+                judge_config=_no_judge_config(),
             )
 
             self.assertTrue(report_path.exists())

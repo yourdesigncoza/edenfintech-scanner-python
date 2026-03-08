@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from .assets import load_json, load_text, methodology_root, scan_input_schema_path, scan_report_schema_path
+from .config import AppConfig
 from .judge import codex_judge
 from .reporting import render_scan_markdown, write_execution_log
 from .scoring import (
@@ -461,7 +462,21 @@ def _build_current_holding_overlays(
     return overlays
 
 
-def run_scan(payload: dict) -> ScanArtifacts:
+def run_scan(
+    payload: dict,
+    *,
+    judge_config: AppConfig | None = None,
+    judge_transport=None,
+) -> ScanArtifacts:
+    return run_scan_with_judge(payload, judge_config=judge_config, judge_transport=judge_transport)
+
+
+def run_scan_with_judge(
+    payload: dict,
+    *,
+    judge_config: AppConfig | None = None,
+    judge_transport=None,
+) -> ScanArtifacts:
     validate_scan_input(payload)
     template = _load_template()
 
@@ -723,7 +738,7 @@ def run_scan(payload: dict) -> ScanArtifacts:
         "survivor_count": len(ranked_candidates),
     }
     validate_scan_report(template)
-    judge = codex_judge(template, execution_log)
+    judge = codex_judge(template, execution_log, config=judge_config, transport=judge_transport)
     markdown = render_scan_markdown(template, execution_log, judge)
     return ScanArtifacts(report_json=template, report_markdown=markdown, execution_log=execution_log, judge=judge)
 
@@ -733,9 +748,11 @@ def run_scan_file(
     json_out: Path | None = None,
     markdown_out: Path | None = None,
     execution_log_out: Path | None = None,
+    judge_config: AppConfig | None = None,
+    judge_transport=None,
 ) -> ScanArtifacts:
     payload = load_json(input_path)
-    artifacts = run_scan(payload)
+    artifacts = run_scan_with_judge(payload, judge_config=judge_config, judge_transport=judge_transport)
 
     if json_out is not None:
         json_out.parent.mkdir(parents=True, exist_ok=True)
