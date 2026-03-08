@@ -37,6 +37,9 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-live-scan RAW1 RA
 Canonical operator flow:
 Build the initial review package, inspect `review/review-checklist.*` and `review/review-note-suggestions.*`, persist any `review_note` updates into a reviewed overlay, finalize that overlay explicitly, then rebuild the review package with `--structured-analysis-path` so the final package splits artifacts across `raw/`, `review/`, and `final/`, with the exact finalized overlay copied into `final/`.
 
+Review package layout:
+Expect one manifest at the run root, retrieval artifacts under `raw/`, reviewer-facing checklist and note-suggestion files under `review/`, and executable scan artifacts plus the packaged finalized overlay under `final/`.
+
 ## Coding Style & Naming Conventions
 Follow the existing Python style: 4-space indentation, explicit type hints, `from __future__ import annotations`, and small focused functions. Use `snake_case` for modules, functions, variables, and fixture keys; use `PascalCase` for dataclasses such as `ValidationReport`. Keep CLI output deterministic and prefer standard-library-only solutions unless a dependency is clearly justified. No formatter or linter is configured here, so match the surrounding code closely.
 

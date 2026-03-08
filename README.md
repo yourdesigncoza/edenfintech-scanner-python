@@ -113,6 +113,32 @@ The rebuilt package keeps raw retrieval files in `raw/`, review helpers in
 includes `report.json`, `report.md`, `execution-log.md`, `judge.json`, and a
 copy of the exact finalized overlay that drove the scan.
 
+Example package layout:
+
+```text
+runs/review-package-final/
+  review-package-manifest.json
+  raw/
+    fmp-raw.json
+    gemini-raw.json
+    merged-raw.json
+    structured-analysis-template.json
+    structured-analysis-draft.json
+  review/
+    review-checklist.json
+    review-checklist.md
+    review-note-suggestions.json
+    review-note-suggestions.md
+  final/
+    structured-analysis-finalized.json
+    enriched-raw.json
+    scan-input.json
+    report.json
+    report.md
+    execution-log.md
+    judge.json
+```
+
 ## Scan Input Model
 
 `run-scan` expects a structured JSON payload. Each candidate must include
@@ -181,7 +207,8 @@ writes review artifacts into `review/` while keeping retrieval artifacts under
 `raw/`. If you provide `--structured-analysis-path`, it also writes the
 enriched raw bundle, scan input, report, execution log, judge output, and a
 packaged copy of the finalized overlay under `final/`, plus a package manifest
-at the run root.
+at the run root. The manifest is the stable machine-readable index; the
+subdirectories are the human-facing layout.
 
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the
