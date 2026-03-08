@@ -260,6 +260,29 @@
         "max_positions": {
           "type": "integer",
           "minimum": 1
+        },
+        "current_holdings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ticker"],
+            "properties": {
+              "ticker": {
+                "type": "string"
+              },
+              "current_weight_pct": {
+                "type": "number",
+                "minimum": 0
+              },
+              "existing_position_action": {
+                "type": "string",
+                "enum": ["HOLD", "HOLD_AND_MONITOR", "TRIM", "REDUCE", "EXIT"]
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },

@@ -38,11 +38,17 @@ def _cmd_show_contract(stage_id: str) -> int:
     return 0
 
 
-def _cmd_run_scan(input_path: str, json_out: str | None, markdown_out: str | None) -> int:
+def _cmd_run_scan(
+    input_path: str,
+    json_out: str | None,
+    markdown_out: str | None,
+    execution_log_out: str | None,
+) -> int:
     artifacts = run_scan_file(
         Path(input_path),
         json_out=Path(json_out) if json_out else None,
         markdown_out=Path(markdown_out) if markdown_out else None,
+        execution_log_out=Path(execution_log_out) if execution_log_out else None,
     )
     print(json.dumps(artifacts.report_json, indent=2))
     return 0
@@ -97,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_scan.add_argument("input_path")
     run_scan.add_argument("--json-out")
     run_scan.add_argument("--markdown-out")
+    run_scan.add_argument("--execution-log-out")
 
     validate_scan_input = subparsers.add_parser("validate-scan-input")
     validate_scan_input.add_argument("input_path")
@@ -122,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "show-contract":
         return _cmd_show_contract(args.stage_id)
     if args.command == "run-scan":
-        return _cmd_run_scan(args.input_path, args.json_out, args.markdown_out)
+        return _cmd_run_scan(args.input_path, args.json_out, args.markdown_out, args.execution_log_out)
     if args.command == "show-scan-template":
         return _cmd_show_scan_template()
     if args.command == "validate-scan-input":

@@ -11,7 +11,7 @@ markdown summaries without changing the underlying methodology.
 - Machine-readable stage contracts for scan orchestration
 - Canonical rulebook aligned to `strategy-rules.md`
 - Regression fixtures copied from existing scan artifacts
-- A deterministic Python pipeline for screening, analysis, epistemic review, and report assembly
+- A deterministic Python pipeline for screening, analysis, epistemic review, report assembly, and execution-log generation
 - A CLI for validating assets, importing raw research bundles, and executing scans from JSON input
 
 ## Commands
@@ -25,7 +25,7 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-raw-scan-templat
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-schema
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-scan-input raw-input.json --json-out input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-scan input.json --json-out report.json --markdown-out report.md
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-scan input.json --json-out report.json --markdown-out report.md --execution-log-out execution-log.md
 ```
 
 ## Layout
@@ -45,7 +45,9 @@ tests/
 `run-scan` expects a structured JSON payload. Each candidate must include
 screening data; names that pass screening must also include analysis inputs
 (`base_case`, `worst_case`, `probability`, catalyst/risk fields) and an
-`epistemic_review` object with the five PCS answers.
+`epistemic_review` object with the five PCS answers. `portfolio_context` may
+also include `current_holdings` so the report can populate
+`current_holding_overlays`.
 
 Use `show-scan-template` to generate a working example payload and
 `show-scan-schema` to inspect the versioned contract in

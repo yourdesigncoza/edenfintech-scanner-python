@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from .assets import load_json, load_text, methodology_root, scan_input_schema_path, scan_report_schema_path
+from .reporting import render_scan_markdown, write_execution_log
 from .scoring import (
     EpistemicOutcome,
     ScoreBreakdown,
@@ -359,64 +360,73 @@ def validate_scan_report(report: dict) -> None:
         raise ValueError(f"scan_report schema validation failed: {exc}") from exc
 
 
-def _render_markdown(report: dict) -> str:
-    lines = [
-        f"# {report['title']}",
-        "",
-        f"- Date: {report['date']}",
-        f"- Universe: {report['scan_parameters']['universe']}",
-        f"- Focus: {report['scan_parameters']['focus']}",
-        f"- Stocks scanned: {report['scan_parameters']['stocks_scanned']}",
-        "",
-        "## Executive Summary",
-    ]
-    lines.extend(f"- {item}" for item in report["executive_summary"])
+def _build_current_holding_overlays(
+    portfolio_context: dict,
+    ranked_candidates: list[dict],
+    rejected_screening: list[dict],
+    rejected_analysis: list[dict],
+) -> list[dict]:
+    holdings = _require_list(portfolio_context.get("current_holdings", []), "portfolio_context.current_holdings")
+    if not holdings:
+        return []
 
-    lines.extend(["", "## Ranked Candidates"])
-    if report["ranked_candidates"]:
-        for candidate in report["ranked_candidates"]:
-            lines.extend(
-                [
-                    f"### {candidate['rank']}. {candidate['ticker']}",
-                    f"- Cluster: {candidate['cluster_name']}",
-                    f"- Score: {candidate['score']['post_epistemic']['total_score']}",
-                    f"- Effective probability: {candidate['epistemic_confidence']['effective_probability']}%",
-                    f"- Base-case CAGR: {candidate['base_case']['cagr_pct']}%",
-                    f"- Downside: {candidate['worst_case']['downside_pct']}%",
-                    f"- Size band: {candidate['position_size']['score_band']}",
-                ]
+    ranked_by_ticker = {item["ticker"]: item for item in ranked_candidates}
+    screen_reject_by_ticker = {item["ticker"]: item for item in rejected_screening}
+    analysis_reject_by_ticker = {item["ticker"]: item for item in rejected_analysis}
+    overlays: list[dict] = []
+
+    for idx, holding in enumerate(holdings):
+        item = _require_dict(holding, f"portfolio_context.current_holdings[{idx}]")
+        ticker = _require_nonempty_string(item.get("ticker"), f"portfolio_context.current_holdings[{idx}].ticker")
+        weight = item.get("current_weight_pct")
+        weight_prefix = f"Current weight {weight}%." if isinstance(weight, (int, float)) else "Current holding."
+        note = item.get("note")
+
+        if ticker in ranked_by_ticker:
+            reason = f"{weight_prefix} Candidate ranked in current scan and remains eligible for new capital."
+            if note:
+                reason = f"{reason} {note}"
+            overlays.append(
+                {
+                    "ticker": ticker,
+                    "status_in_scan": "RANKED",
+                    "new_capital_decision": "ADD",
+                    "existing_position_action": item.get("existing_position_action", "HOLD"),
+                    "reason": reason,
+                }
             )
-    else:
-        lines.append("- None")
+            continue
 
-    lines.extend(["", "## Pending Human Review"])
-    pending = report.get("pending_human_review", [])
-    if pending:
-        for item in pending:
-            lines.append(f"- {item['ticker']}: {item['reason']}")
-    else:
-        lines.append("- None")
+        if ticker in analysis_reject_by_ticker:
+            reason = f"{weight_prefix} Rejected at analysis: {analysis_reject_by_ticker[ticker]['rejection_reason']}"
+            if note:
+                reason = f"{reason} {note}"
+            overlays.append(
+                {
+                    "ticker": ticker,
+                    "status_in_scan": "REJECTED_AT_ANALYSIS",
+                    "new_capital_decision": "DO_NOT_ADD",
+                    "existing_position_action": item.get("existing_position_action", "HOLD_AND_MONITOR"),
+                    "reason": reason,
+                }
+            )
+            continue
 
-    lines.extend(["", "## Rejected At Screening"])
-    if report["rejected_at_screening"]:
-        for item in report["rejected_at_screening"]:
-            lines.append(f"- {item['ticker']}: {item['failed_at']} — {item['reason']}")
-    else:
-        lines.append("- None")
+        if ticker in screen_reject_by_ticker:
+            reason = f"{weight_prefix} Rejected at screening: {screen_reject_by_ticker[ticker]['reason']}"
+            if note:
+                reason = f"{reason} {note}"
+            overlays.append(
+                {
+                    "ticker": ticker,
+                    "status_in_scan": "REJECTED_AT_SCREENING",
+                    "new_capital_decision": "DO_NOT_ADD",
+                    "existing_position_action": item.get("existing_position_action", "HOLD"),
+                    "reason": reason,
+                }
+            )
 
-    lines.extend(["", "## Rejected At Analysis"])
-    if report["rejected_at_analysis_detail_packets"]:
-        for item in report["rejected_at_analysis_detail_packets"]:
-            lines.append(f"- {item['ticker']}: {item['rejection_reason']}")
-    else:
-        lines.append("- None")
-
-    lines.extend(["", "## Portfolio Impact"])
-    lines.extend(f"- {item}" for item in report["portfolio_impact"])
-
-    lines.extend(["", "## Methodology Notes"])
-    lines.extend(f"- {item}" for item in report["methodology_notes"])
-    return "\n".join(lines) + "\n"
+    return overlays
 
 
 def _final_judge(report: dict, execution_log: dict) -> dict:
@@ -469,7 +479,6 @@ def run_scan(payload: dict) -> ScanArtifacts:
     rejected_analysis: list[dict] = []
     pending_human_review: list[dict] = []
     ranked_candidates: list[dict] = []
-    current_holding_overlays: list[dict] = []
     execution_log_entries: list[str] = []
 
     survivors: list[dict] = []
@@ -664,6 +673,14 @@ def run_scan(payload: dict) -> ScanArtifacts:
     for idx, candidate in enumerate(ranked_candidates, start=1):
         candidate["rank"] = idx
 
+    portfolio_context = _require_dict(payload.get("portfolio_context", {}), "portfolio_context")
+    current_holding_overlays = _build_current_holding_overlays(
+        portfolio_context,
+        ranked_candidates,
+        rejected_screening,
+        rejected_analysis,
+    )
+
     template["ranked_candidates"] = ranked_candidates
     template["pending_human_review"] = pending_human_review
     template["rejected_at_screening"] = rejected_screening
@@ -680,7 +697,6 @@ def run_scan(payload: dict) -> ScanArtifacts:
     if pending_human_review:
         template["executive_summary"].append("Exception candidates remain out of ranked output until human approval.")
 
-    portfolio_context = _require_dict(payload.get("portfolio_context", {}), "portfolio_context")
     current_positions = int(portfolio_context.get("current_positions", 0))
     max_positions = int(portfolio_context.get("max_positions", 12))
     available_slots = max(max_positions - current_positions, 0)
@@ -688,26 +704,38 @@ def run_scan(payload: dict) -> ScanArtifacts:
         f"Current positions: {current_positions}/{max_positions} | Available slots: {available_slots}",
         f"New ranked candidates: {len(ranked_candidates)} | Pending human review: {len(pending_human_review)}",
     ]
+    if current_holding_overlays:
+        template["portfolio_impact"].append(f"Current holding overlays generated: {len(current_holding_overlays)}")
     template["methodology_notes"] = list(payload.get("methodology_notes", [])) + [
         "Assembly is JSON-first and markdown is rendered from the validated report object.",
         "Probability was normalized to the canonical 50/60/70/80 bands before epistemic adjustments.",
         "20-29.9% CAGR exception candidates stay outside ranked output until a human approves them.",
     ]
-
-    markdown = _render_markdown(template)
     execution_log = {
         "entries": execution_log_entries,
         "candidate_count": len(payload["candidates"]),
         "survivor_count": len(ranked_candidates),
     }
     judge = _final_judge(template, execution_log)
+    markdown = render_scan_markdown(template, execution_log, judge)
     validate_scan_report(template)
     return ScanArtifacts(report_json=template, report_markdown=markdown, execution_log=execution_log, judge=judge)
 
 
-def run_scan_file(input_path: Path, json_out: Path | None = None, markdown_out: Path | None = None) -> ScanArtifacts:
+def run_scan_file(
+    input_path: Path,
+    json_out: Path | None = None,
+    markdown_out: Path | None = None,
+    execution_log_out: Path | None = None,
+) -> ScanArtifacts:
     payload = load_json(input_path)
     artifacts = run_scan(payload)
+
+    if execution_log_out is not None:
+        artifacts.report_json["execution_log"] = {
+            "requested": True,
+            "path": str(execution_log_out),
+        }
 
     if json_out is not None:
         json_out.parent.mkdir(parents=True, exist_ok=True)
@@ -715,6 +743,8 @@ def run_scan_file(input_path: Path, json_out: Path | None = None, markdown_out: 
     if markdown_out is not None:
         markdown_out.parent.mkdir(parents=True, exist_ok=True)
         markdown_out.write_text(artifacts.report_markdown)
+    if execution_log_out is not None:
+        write_execution_log(execution_log_out, artifacts.report_json, artifacts.execution_log, artifacts.judge)
 
     return artifacts
 
@@ -738,6 +768,14 @@ def scan_input_template() -> dict:
         "portfolio_context": {
             "current_positions": 4,
             "max_positions": 12,
+            "current_holdings": [
+                {
+                    "ticker": "ABC",
+                    "current_weight_pct": 6.5,
+                    "existing_position_action": "HOLD",
+                    "note": "Example current holding for overlay generation.",
+                }
+            ],
         },
         "methodology_notes": [
             "Populate this payload with deterministic research inputs before running the pipeline.",
