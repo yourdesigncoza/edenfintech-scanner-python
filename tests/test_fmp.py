@@ -25,6 +25,29 @@ def _fixture_transport(mapping: dict[str, str]):
 
 
 class FmpTest(unittest.TestCase):
+    def test_client_parses_official_shape_fmp_payloads(self) -> None:
+        client = FmpClient(
+            "fmp-test-key",
+            transport=_fixture_transport(
+                {
+                    "profile/RAW1": "official_profile_raw1.json",
+                    "quote/RAW1": "official_quote_raw1.json",
+                    "historical-price-full/RAW1": "official_historical_price_full_raw1.json",
+                    "income-statement/RAW1": "official_income_statement_raw1.json",
+                    "cash-flow-statement/RAW1": "official_cash_flow_statement_raw1.json",
+                }
+            ),
+        )
+
+        candidate = build_raw_candidate_from_fmp("RAW1", client)
+
+        self.assertEqual(candidate["industry"], "Industrial Components")
+        self.assertEqual(candidate["market_snapshot"]["all_time_high"], 92.31)
+        self.assertEqual(candidate["market_snapshot"]["pct_off_ath"], 74.0)
+        self.assertEqual(candidate["fmp_context"]["derived"]["latest_revenue_b"], 3.4)
+        self.assertEqual(candidate["fmp_context"]["derived"]["shares_m_latest"], 110.0)
+        self.assertEqual(candidate["fmp_context"]["derived"]["latest_fcf_margin_pct"], 10.0)
+
     def test_client_builds_raw_bundle_with_derived_fields(self) -> None:
         config = AppConfig(
             fmp_api_key="fmp-test-key",

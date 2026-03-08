@@ -1,0 +1,41 @@
+{
+  "candidates": [
+    {
+      "index": 0,
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "{\"research_notes\":[{\"claim\":\"Recent filings highlight steady vertical software adoption.\",\"source_title\":\"Company investor presentation\",\"source_url\":\"https://example.com/investor\",\"source_type\":\"company_material\",\"published_at\":\"2026-02-18\",\"confidence_note\":\"Primary company source; directly attributable but potentially optimistic.\"}],\"catalyst_evidence\":[{\"claim\":\"A platform rollout is scheduled for 2026.\",\"source_title\":\"Product launch note\",\"source_url\":\"https://example.com/launch\",\"source_type\":\"company_material\",\"published_at\":\"2026-01-12\",\"confidence_note\":\"Concrete announced rollout timing.\"}],\"risk_evidence\":[{\"claim\":\"Customer concentration remains above 20% of revenue.\",\"source_title\":\"10-K risk factors\",\"source_url\":\"https://example.com/risk\",\"source_type\":\"filing\",\"published_at\":\"2026-02-20\",\"confidence_note\":\"Explicitly disclosed in filings.\"}],\"management_observations\":[{\"claim\":\"Management reiterated multi-year margin targets on the earnings call.\",\"source_title\":\"Q4 earnings call transcript\",\"source_url\":\"https://example.com/call\",\"source_type\":\"transcript\",\"published_at\":\"2026-02-21\",\"confidence_note\":\"Direct management commentary.\"}],\"moat_observations\":[{\"claim\":\"Workflow integrations increase switching costs for enterprise customers.\",\"source_title\":\"Industry research note\",\"source_url\":\"https://example.com/moat\",\"source_type\":\"third_party_research\",\"published_at\":\"2026-02-25\",\"confidence_note\":\"Inference from industry analyst note.\"}],\"precedent_observations\":[{\"claim\":\"A prior peer rerated after completing a similar platform consolidation.\",\"source_title\":\"Comparable company case study\",\"source_url\":\"https://example.com/precedent\",\"source_type\":\"third_party_research\",\"published_at\":\"2025-11-03\",\"confidence_note\":\"Comparable precedent, not direct company evidence.\"}],\"epistemic_anchors\":[{\"claim\":\"The main uncertainty is whether rollout uptake converts to durable net retention expansion.\",\"source_title\":\"Sell-side preview\",\"source_url\":\"https://example.com/anchor\",\"source_type\":\"sell_side_research\",\"published_at\":\"2026-02-26\",\"confidence_note\":\"Useful framing anchor, still external opinion.\"}]}"
+          }
+        ]
+      },
+      "finishReason": "STOP",
+      "safetyRatings": [
+        {
+          "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+          "probability": "NEGLIGIBLE"
+        }
+      ]
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 732,
+    "candidatesTokenCount": 418,
+    "totalTokenCount": 1150,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 732
+      }
+    ],
+    "candidatesTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 418
+      }
+    ]
+  },
+  "modelVersion": "gemini-3-pro-preview",
+  "responseId": "fixture-rest-response-official-shape"
+}

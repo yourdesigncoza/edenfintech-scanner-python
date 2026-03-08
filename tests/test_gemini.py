@@ -20,6 +20,28 @@ def _load_fixture(name: str) -> dict:
 
 
 class GeminiTest(unittest.TestCase):
+    def test_builds_bundle_from_official_generate_content_shape(self) -> None:
+        def transport(url: str, headers: dict[str, str], payload: dict) -> dict:
+            return _load_fixture("generate_content_rest_raw1_official_shape.json")
+
+        bundle = build_gemini_bundle_with_config(
+            ["RAW1"],
+            config=AppConfig(
+                fmp_api_key=None,
+                gemini_api_key="gemini-test-key",
+                openai_api_key=None,
+                codex_judge_model="gpt-5-codex",
+            ),
+            transport=transport,
+            focus="industrial software",
+            research_question="Collect source-backed catalysts and risks.",
+        )
+
+        candidate = bundle["raw_candidates"][0]
+        self.assertEqual(candidate["ticker"], "RAW1")
+        self.assertEqual(candidate["gemini_context"]["research_notes"][0]["source_type"], "company_material")
+        self.assertEqual(candidate["gemini_context"]["catalyst_evidence"][0]["published_at"], "2026-01-12")
+
     def test_builds_retrieval_only_bundle(self) -> None:
         seen_requests: list[dict] = []
 

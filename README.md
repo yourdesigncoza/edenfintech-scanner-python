@@ -124,5 +124,7 @@ boundary stays explicit. If you later apply a structured overlay, its
 manual template so the machine-draft path is visible without bypassing review.
 
 Adapter tests now use sanitized wire-format fixture payloads under
-`tests/fixtures/fmp/` and `tests/fixtures/gemini/` so response-shape variance is
-covered without introducing live network dependence into CI.
+`tests/fixtures/fmp/` and `tests/fixtures/gemini/`, including separate
+official-shape fixtures that preserve provider nesting and response noise. That
+covers response-shape variance without introducing live network dependence into
+CI.
