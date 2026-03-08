@@ -97,7 +97,9 @@ not invent judgments or rewrite field values. It only validates the reviewed
 overlay, checks internal raw-bundle fingerprint continuity, converts remaining
 required `MACHINE_DRAFT` provenance entries to either `HUMAN_CONFIRMED` or
 `HUMAN_EDITED`, and adds top-level finalization metadata before the overlay can
-be applied.
+be applied. It will only convert a machine-draft provenance entry if that entry
+already carries an explicit `review_note`, so an untouched machine-generated
+draft cannot be rubber-stamped into a finalized overlay.
 
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the

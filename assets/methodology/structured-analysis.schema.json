@@ -254,6 +254,10 @@
           "type": "string",
           "minLength": 1
         },
+        "review_note": {
+          "type": "string",
+          "minLength": 1
+        },
         "evidence_refs": {
           "type": "array",
           "items": {

@@ -114,7 +114,12 @@ def _template_field_provenance(evidence_context: dict) -> list[dict]:
     ]
 
 
-def _validate_provenance_coverage(candidate: dict, *, allow_machine_draft: bool) -> None:
+def _validate_provenance_coverage(
+    candidate: dict,
+    *,
+    allow_machine_draft: bool,
+    require_review_note_for_finalized: bool,
+) -> None:
     provenance = candidate.get("field_provenance")
     if not isinstance(provenance, list) or not provenance:
         raise ValueError(f"structured candidate {candidate.get('ticker')} must include field_provenance before apply")
@@ -134,6 +139,12 @@ def _validate_provenance_coverage(candidate: dict, *, allow_machine_draft: bool)
             raise ValueError(
                 f"structured candidate {candidate.get('ticker')} still has MACHINE_DRAFT provenance for {field_path}"
             )
+        if require_review_note_for_finalized:
+            review_note = item.get("review_note")
+            if not isinstance(review_note, str) or not review_note.strip():
+                raise ValueError(
+                    f"structured candidate {candidate.get('ticker')} is missing review_note for {field_path}"
+                )
 
     missing = [field_path for field_path in REQUIRED_PROVENANCE_FIELDS if field_path not in provenance_by_path]
     if missing:
@@ -326,7 +337,11 @@ def apply_structured_analysis(raw_bundle: dict, structured_payload: dict) -> dic
             raise ValueError(f"duplicate structured candidate for ticker {ticker}")
         if _contains_placeholder(candidate):
             raise ValueError(f"structured candidate {ticker} still contains placeholder markers")
-        _validate_provenance_coverage(candidate, allow_machine_draft=False)
+        _validate_provenance_coverage(
+            candidate,
+            allow_machine_draft=False,
+            require_review_note_for_finalized=True,
+        )
         structured_by_ticker[ticker] = candidate
 
     merged = deepcopy(raw_bundle)
@@ -411,9 +426,18 @@ def finalize_structured_analysis(
         ticker = candidate.get("ticker")
         if _contains_placeholder(candidate):
             raise ValueError(f"structured candidate {ticker} still contains placeholder markers")
-        _validate_provenance_coverage(candidate, allow_machine_draft=True)
+        _validate_provenance_coverage(
+            candidate,
+            allow_machine_draft=True,
+            require_review_note_for_finalized=False,
+        )
         for item in candidate["field_provenance"]:
             if item.get("status") == "MACHINE_DRAFT":
+                review_note = item.get("review_note")
+                if not isinstance(review_note, str) or not review_note.strip():
+                    raise ValueError(
+                        f"structured candidate {ticker} cannot finalize {item.get('field_path')} without review_note"
+                    )
                 item["status"] = final_status
                 converted_fields += 1
 
@@ -429,7 +453,11 @@ def finalize_structured_analysis(
 
     validate_structured_analysis(finalized)
     for candidate in finalized["structured_candidates"]:
-        _validate_provenance_coverage(candidate, allow_machine_draft=False)
+        _validate_provenance_coverage(
+            candidate,
+            allow_machine_draft=False,
+            require_review_note_for_finalized=True,
+        )
     return finalized
 
 

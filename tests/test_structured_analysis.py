@@ -18,6 +18,8 @@ FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "raw" / "merged_ca
 def _review_ready_overlay() -> dict:
     payload = structured_analysis_template(load_json(FIXTURE_PATH))
     candidate = payload["structured_candidates"][0]
+    for provenance in candidate["field_provenance"]:
+        provenance["review_note"] = f"Reviewer checked {provenance['field_path']} against the fetched evidence."
     candidate["screening_inputs"]["industry_understandable"] = True
     candidate["screening_inputs"]["double_plus_potential"] = True
     for check_name in ["solvency", "dilution", "revenue_growth", "roic", "valuation"]:
@@ -76,6 +78,14 @@ class StructuredAnalysisFinalizationTest(unittest.TestCase):
         draft["generation_metadata"]["raw_bundle_fingerprint"] = "mismatch"
 
         with self.assertRaisesRegex(ValueError, "generation metadata fingerprint does not match source_bundle"):
+            finalize_structured_analysis(draft, reviewer="Analyst One")
+
+    def test_finalize_rejects_machine_draft_without_review_notes(self) -> None:
+        draft = _review_ready_overlay()
+        for provenance in draft["structured_candidates"][0]["field_provenance"]:
+            provenance.pop("review_note", None)
+
+        with self.assertRaisesRegex(ValueError, "cannot finalize .* without review_note"):
             finalize_structured_analysis(draft, reviewer="Analyst One")
 
 

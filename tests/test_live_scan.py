@@ -84,6 +84,10 @@ def _config() -> AppConfig:
 def _finalized_overlay(template_path: Path, out_path: Path) -> Path:
     payload = json.loads(template_path.read_text())
     for candidate in payload["structured_candidates"]:
+        for provenance in candidate["field_provenance"]:
+            provenance["review_note"] = (
+                f"Reviewer checked {provenance['field_path']} against the fetched evidence bundle."
+            )
         candidate["screening_inputs"]["industry_understandable"] = True
         candidate["screening_inputs"]["double_plus_potential"] = True
         for check_name in ["solvency", "dilution", "revenue_growth", "roic", "valuation"]:
@@ -215,6 +219,9 @@ class LiveScanTest(unittest.TestCase):
             promoted["completion_status"] = "FINALIZED"
             for candidate in promoted["structured_candidates"]:
                 for provenance in candidate["field_provenance"]:
+                    provenance["review_note"] = (
+                        f"Reviewer checked {provenance['field_path']} against the fetched evidence bundle."
+                    )
                     provenance["status"] = "HUMAN_CONFIRMED"
                 candidate["screening_inputs"]["industry_understandable"] = True
                 candidate["screening_inputs"]["double_plus_potential"] = True
@@ -245,6 +252,65 @@ class LiveScanTest(unittest.TestCase):
                 run_live_scan(
                     ["RAW1"],
                     out_dir=out_dir / "missing-finalization-metadata",
+                    stop_at="scan-input",
+                    structured_analysis_path=promoted_path,
+                    config=_config(),
+                    fmp_transport=_mock_fmp_transport,
+                    gemini_transport=_mock_gemini_transport,
+                )
+
+    def test_run_live_scan_rejects_finalized_overlay_without_review_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            raw_result = run_live_scan(
+                ["RAW1"],
+                out_dir=out_dir,
+                stop_at="raw-bundle",
+                config=_config(),
+                fmp_transport=_mock_fmp_transport,
+                gemini_transport=_mock_gemini_transport,
+            )
+            promoted = json.loads(raw_result.written_paths["structured_analysis_template"].read_text())
+            promoted["completion_status"] = "FINALIZED"
+            promoted["finalization_metadata"] = {
+                "reviewer": "Test Reviewer",
+                "finalized_at": "2026-03-08T10:00:00Z",
+                "provenance_transition_status": "HUMAN_CONFIRMED",
+                "converted_machine_fields": 26,
+                "notes": ["Hand-edited overlay without review_note fields."],
+            }
+            for candidate in promoted["structured_candidates"]:
+                for provenance in candidate["field_provenance"]:
+                    provenance["status"] = "HUMAN_CONFIRMED"
+                candidate["screening_inputs"]["industry_understandable"] = True
+                candidate["screening_inputs"]["double_plus_potential"] = True
+                for check_name in ["solvency", "dilution", "revenue_growth", "roic", "valuation"]:
+                    candidate["screening_inputs"][check_name]["verdict"] = "PASS"
+                    candidate["screening_inputs"][check_name]["evidence"] = "Reviewed."
+                candidate["analysis_inputs"]["margin_trend_gate"] = "PASS"
+                candidate["analysis_inputs"]["final_cluster_status"] = "CLEAR_WINNER"
+                candidate["analysis_inputs"]["catalyst_classification"] = "VALID_CATALYST"
+                candidate["analysis_inputs"]["dominant_risk_type"] = "Operational/Financial"
+                candidate["analysis_inputs"]["issues_and_fixes"] = "Structured issues and fixes."
+                candidate["analysis_inputs"]["moat_assessment"] = "Structured moat assessment."
+                candidate["analysis_inputs"]["thesis_summary"] = "Structured thesis."
+                candidate["analysis_inputs"]["catalysts"] = ["Structured catalyst"]
+                candidate["analysis_inputs"]["key_risks"] = ["Structured risk"]
+                candidate["analysis_inputs"]["base_case_assumptions"]["discount_path"] = "Structured discount path."
+                candidate["analysis_inputs"]["probability_inputs"]["base_rate"] = "Structured base rate."
+                candidate["analysis_inputs"]["probability_inputs"]["likert_adjustments"] = "Structured likert adjustments."
+                candidate["analysis_inputs"]["exception_candidate"]["reason"] = "No exception required."
+                for key in ["q1_operational", "q2_regulatory", "q3_precedent", "q4_nonbinary", "q5_macro"]:
+                    candidate["epistemic_inputs"][key]["answer"] = "Yes"
+                    candidate["epistemic_inputs"][key]["justification"] = f"{key} structured justification."
+                    candidate["epistemic_inputs"][key]["evidence"] = f"{key} structured evidence."
+            promoted_path = out_dir / "finalized-without-review-notes.json"
+            promoted_path.write_text(json.dumps(promoted, indent=2))
+
+            with self.assertRaisesRegex(ValueError, "missing review_note"):
+                run_live_scan(
+                    ["RAW1"],
+                    out_dir=out_dir / "missing-review-notes",
                     stop_at="scan-input",
                     structured_analysis_path=promoted_path,
                     config=_config(),
