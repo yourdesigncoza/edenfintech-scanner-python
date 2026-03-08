@@ -71,9 +71,12 @@ The current automation boundary between retrieval and the deterministic pipeline
 is the structured-analysis overlay in
 `assets/methodology/structured-analysis.schema.json`. Use
 `build-structured-analysis-template` to generate a ticker-aligned overlay
-template from a merged raw bundle, then replace the example
+template from a merged raw bundle, then replace the generated
 `screening_inputs`, `analysis_inputs`, and `epistemic_inputs` with
-methodology-grounded judgments before building scan input or a report.
+methodology-grounded judgments before building scan input or a report. The
+generated template is intentionally non-executable: it contains
+`__REQUIRED__` markers, starts as `completion_status: DRAFT`, and is bound to
+the raw bundle fingerprint it was generated from.
 
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the
@@ -92,4 +95,5 @@ tickers into a single combined raw bundle; it still requires
 `build-scan-input` can succeed. `run-live-scan` orchestrates the full retrieval
 flow and writes all intermediate artifacts into one directory, but by default it
 stops at `raw-bundle` and writes a structured-analysis template so the current
-boundary stays explicit.
+boundary stays explicit. If you later apply a structured overlay, its
+`source_bundle` fingerprint must match the freshly fetched raw bundle.

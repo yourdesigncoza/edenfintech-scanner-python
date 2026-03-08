@@ -7,6 +7,8 @@
     "scan_date",
     "version",
     "scan_parameters",
+    "source_bundle",
+    "completion_status",
     "methodology_notes",
     "structured_candidates"
   ],
@@ -45,6 +47,16 @@
         }
       }
     },
+    "source_bundle": {
+      "$ref": "#/definitions/source_bundle"
+    },
+    "completion_status": {
+      "type": "string",
+      "enum": ["DRAFT", "FINALIZED"]
+    },
+    "completion_note": {
+      "type": "string"
+    },
     "methodology_notes": {
       "type": "array",
       "items": {
@@ -69,7 +81,7 @@
       "properties": {
         "verdict": {
           "type": "string",
-          "minLength": 1
+          "enum": ["PASS", "BORDERLINE_PASS", "FAIL"]
         },
         "evidence": {
           "type": "string",
@@ -87,7 +99,7 @@
       "properties": {
         "answer": {
           "type": "string",
-          "minLength": 1
+          "enum": ["Yes", "No"]
         },
         "justification": {
           "type": "string",
@@ -99,10 +111,127 @@
         }
       }
     },
+    "base_case_assumptions": {
+      "type": "object",
+      "required": ["revenue_b", "fcf_margin_pct", "multiple", "shares_m", "years"],
+      "properties": {
+        "revenue_b": { "type": "number" },
+        "fcf_margin_pct": { "type": "number" },
+        "multiple": { "type": "number" },
+        "shares_m": { "type": "number", "minimum": 0 },
+        "years": { "type": "number", "minimum": 0 },
+        "discount_path": { "type": "string" }
+      }
+    },
+    "worst_case_assumptions": {
+      "type": "object",
+      "required": ["revenue_b", "fcf_margin_pct", "multiple", "shares_m"],
+      "properties": {
+        "revenue_b": { "type": "number" },
+        "fcf_margin_pct": { "type": "number" },
+        "multiple": { "type": "number" },
+        "shares_m": { "type": "number", "minimum": 0 },
+        "trough_path": { "type": "object" },
+        "tbv_crosscheck": { "type": "object" }
+      }
+    },
+    "probability_inputs": {
+      "type": "object",
+      "required": ["base_probability_pct"],
+      "properties": {
+        "base_probability_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "base_rate": { "type": "string" },
+        "likert_adjustments": { "type": "string" },
+        "ceilings_applied": { "type": "string" },
+        "threshold_proximity_warning": { "type": "string" }
+      }
+    },
+    "analysis_inputs": {
+      "type": "object",
+      "required": [
+        "margin_trend_gate",
+        "final_cluster_status",
+        "catalyst_classification",
+        "dominant_risk_type",
+        "base_case_assumptions",
+        "worst_case_assumptions",
+        "probability_inputs"
+      ],
+      "properties": {
+        "margin_trend_gate": {
+          "type": "string",
+          "enum": ["PASS", "PERMANENT_PASS"]
+        },
+        "final_cluster_status": {
+          "type": "string",
+          "enum": ["CLEAR_WINNER", "CONDITIONAL_WINNER", "LOWER_PRIORITY", "ELIMINATED"]
+        },
+        "catalyst_classification": {
+          "type": "string",
+          "enum": ["VALID_CATALYST", "SUPPORTING_TAILWIND", "WATCH_ONLY", "INVALID"]
+        },
+        "dominant_risk_type": {
+          "type": "string",
+          "enum": [
+            "Operational/Financial",
+            "Cyclical/Macro",
+            "Regulatory/Political",
+            "Legal/Investigation",
+            "Structural fragility (SPOF)"
+          ]
+        },
+        "issues_and_fixes": { "type": "string" },
+        "moat_assessment": { "type": "string" },
+        "thesis_summary": { "type": "string" },
+        "catalysts": {
+          "type": "array",
+          "items": {}
+        },
+        "key_risks": {
+          "type": "array",
+          "items": {}
+        },
+        "key_financials": { "type": "object" },
+        "structural_diagnosis": { "type": "object" },
+        "human_judgment_flags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "base_case_assumptions": { "$ref": "#/definitions/base_case_assumptions" },
+        "worst_case_assumptions": { "$ref": "#/definitions/worst_case_assumptions" },
+        "probability_inputs": { "$ref": "#/definitions/probability_inputs" },
+        "exception_candidate": {
+          "type": "object",
+          "properties": {
+            "eligible": { "type": "boolean" },
+            "reason": { "type": "string" }
+          }
+        }
+      }
+    },
+    "source_bundle": {
+      "type": "object",
+      "required": [
+        "scan_date",
+        "scan_mode",
+        "focus",
+        "api",
+        "raw_bundle_fingerprint"
+      ],
+      "properties": {
+        "scan_date": { "type": "string", "minLength": 1 },
+        "scan_mode": { "type": "string", "minLength": 1 },
+        "focus": { "type": "string", "minLength": 1 },
+        "api": { "type": "string", "minLength": 1 },
+        "raw_bundle_fingerprint": { "type": "string", "minLength": 1 }
+      }
+    },
     "structured_candidate": {
       "type": "object",
       "required": [
         "ticker",
+        "evidence_context",
+        "evidence_fingerprint",
         "screening_inputs"
       ],
       "properties": {
@@ -112,6 +241,10 @@
         },
         "evidence_context": {
           "type": "object"
+        },
+        "evidence_fingerprint": {
+          "type": "string",
+          "minLength": 1
         },
         "screening_inputs": {
           "type": "object",
@@ -143,10 +276,17 @@
           }
         },
         "analysis_inputs": {
-          "type": "object"
+          "$ref": "#/definitions/analysis_inputs"
         },
         "epistemic_inputs": {
           "type": "object",
+          "required": [
+            "q1_operational",
+            "q2_regulatory",
+            "q3_precedent",
+            "q4_nonbinary",
+            "q5_macro"
+          ],
           "properties": {
             "q1_operational": { "$ref": "#/definitions/pcs_check" },
             "q2_regulatory": { "$ref": "#/definitions/pcs_check" },
