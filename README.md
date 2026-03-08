@@ -139,6 +139,27 @@ runs/review-package-final/
     judge.json
 ```
 
+Example manifest excerpt:
+
+```json
+{
+  "out_dir": "runs/review-package-final",
+  "stop_at": "report",
+  "directories": {
+    "raw": "runs/review-package-final/raw",
+    "review": "runs/review-package-final/review",
+    "final": "runs/review-package-final/final"
+  },
+  "artifacts": {
+    "merged_raw": "runs/review-package-final/raw/merged-raw.json",
+    "review_checklist_markdown": "runs/review-package-final/review/review-checklist.md",
+    "structured_analysis_finalized": "runs/review-package-final/final/structured-analysis-finalized.json",
+    "report_json": "runs/review-package-final/final/report.json",
+    "judge_json": "runs/review-package-final/final/judge.json"
+  }
+}
+```
+
 ## Scan Input Model
 
 `run-scan` expects a structured JSON payload. Each candidate must include
