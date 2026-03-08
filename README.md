@@ -12,7 +12,7 @@ markdown summaries without changing the underlying methodology.
 - Canonical rulebook aligned to `strategy-rules.md`
 - Regression fixtures copied from existing scan artifacts
 - A deterministic Python pipeline for screening, analysis, epistemic review, report assembly, execution-log generation, and config-gated judge review
-- A CLI for validating assets, fetching FMP raw bundles, importing raw research bundles, and executing scans from JSON input
+- A CLI for validating assets, fetching FMP and Gemini raw bundles, merging them, importing raw research bundles, and executing scans from JSON input
 
 ## Commands
 
@@ -23,7 +23,10 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-contract screeni
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-template
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-raw-scan-template
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-schema
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-gemini-schema
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-fmp-bundle RAW1 RAW2 --json-out fmp-raw.json
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-gemini-bundle RAW1 RAW2 --focus "payments software" --json-out gemini-raw.json
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli merge-raw-bundles fmp-raw.json gemini-raw.json --json-out merged-raw.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-scan-input raw-input.json --json-out input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-scan input.json --json-out report.json --markdown-out report.md --execution-log-out execution-log.md
@@ -67,5 +70,10 @@ existing `codex_final_judge` contract.
 
 `fetch-fmp-bundle` is retrieval-only. It emits raw-bundle fields from Financial
 Modeling Prep, including current price, derived `% off ATH`, revenue history,
-share-count, and FCF-margin history. It does not emit final scan-input payloads
-or methodology decisions directly.
+share-count, and FCF-margin history. `fetch-gemini-bundle` is also retrieval-
+only. It emits sourced qualitative evidence arrays defined in
+`assets/methodology/gemini-raw-bundle.schema.json`, such as research notes,
+catalyst evidence, risk evidence, management/moat/precedent observations, and
+epistemic anchors. Neither command emits scan-input payloads or methodology
+decisions directly. `merge-raw-bundles` combines those retrieval outputs into a
+single importer-ready raw bundle while leaving normalization in `importers.py`.

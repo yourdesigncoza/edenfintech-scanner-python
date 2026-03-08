@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Gemini Raw Bundle",
+  "type": "object",
+  "required": [
+    "title",
+    "scan_date",
+    "version",
+    "scan_parameters",
+    "methodology_notes",
+    "raw_candidates"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scan_date": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scan_parameters": {
+      "type": "object",
+      "required": [
+        "scan_mode",
+        "focus",
+        "api"
+      ],
+      "properties": {
+        "scan_mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "focus": {
+          "type": "string",
+          "minLength": 1
+        },
+        "api": {
+          "type": "string",
+          "const": "Gemini"
+        }
+      }
+    },
+    "methodology_notes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "raw_candidates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/candidate"
+      }
+    }
+  },
+  "definitions": {
+    "evidence_item": {
+      "type": "object",
+      "required": [
+        "claim",
+        "source_title",
+        "source_url"
+      ],
+      "properties": {
+        "claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "published_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence_note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "gemini_context": {
+      "type": "object",
+      "required": [
+        "prompt_context",
+        "research_notes",
+        "catalyst_evidence",
+        "risk_evidence",
+        "management_observations",
+        "moat_observations",
+        "precedent_observations",
+        "epistemic_anchors"
+      ],
+      "properties": {
+        "prompt_context": {
+          "type": "object",
+          "required": [
+            "model",
+            "research_question",
+            "search_scope"
+          ],
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "research_question": {
+              "type": "string",
+              "minLength": 1
+            },
+            "search_scope": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "research_notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/evidence_item"
+          }
+        },
+        "catalyst_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/evidence_item"
+          }
+        },
+        "risk_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/evidence_item"
+          }
+        },
+        "management_observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/evidence_item"
+          }
+        },
+        "moat_observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/evidence_item"
+          }
+        },
+        "precedent_observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/evidence_item"
+          }
+        },
+        "epistemic_anchors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/evidence_item"
+          }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "ticker",
+        "gemini_context"
+      ],
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cluster_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "industry": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gemini_context": {
+          "$ref": "#/definitions/gemini_context"
+        }
+      }
+    }
+  }
+}

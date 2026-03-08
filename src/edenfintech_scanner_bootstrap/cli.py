@@ -5,9 +5,10 @@ import json
 import sys
 from pathlib import Path
 
-from .assets import contract_path, load_json, scan_input_schema_path
+from .assets import contract_path, gemini_raw_bundle_schema_path, load_json, scan_input_schema_path
 from .config import load_config
 from .fmp import build_fmp_bundle_with_config, write_fmp_bundle
+from .gemini import build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
 from .importers import build_scan_input_file, load_raw_scan_template_text
 from .judge import run_judge_file
 from .pipeline import load_scan_input_template_text, run_scan_file, validate_scan_input_file
@@ -73,6 +74,12 @@ def _cmd_show_scan_schema() -> int:
     return 0
 
 
+def _cmd_show_gemini_schema() -> int:
+    schema = load_json(gemini_raw_bundle_schema_path())
+    print(json.dumps(schema, indent=2))
+    return 0
+
+
 def _cmd_build_scan_input(raw_input_path: str, json_out: str | None) -> int:
     load_config()
     payload = build_scan_input_file(
@@ -101,6 +108,38 @@ def _cmd_fetch_fmp_bundle(tickers: list[str], json_out: str | None) -> int:
     if json_out:
         write_fmp_bundle(Path(json_out), bundle)
     print(json.dumps(bundle, indent=2))
+    return 0
+
+
+def _cmd_fetch_gemini_bundle(
+    tickers: list[str],
+    json_out: str | None,
+    focus: str | None,
+    research_question: str | None,
+    model: str | None,
+) -> int:
+    config = load_config()
+    bundle = build_gemini_bundle_with_config(
+        tickers,
+        config=config,
+        focus=focus,
+        research_question=research_question,
+        model=model or "gemini-3-pro-preview",
+    )
+    if json_out:
+        write_gemini_bundle(Path(json_out), bundle)
+    print(json.dumps(bundle, indent=2))
+    return 0
+
+
+def _cmd_merge_raw_bundles(fmp_bundle_path: str, gemini_bundle_path: str, json_out: str | None) -> int:
+    merged = merge_fmp_and_gemini_bundles(
+        load_json(Path(fmp_bundle_path)),
+        load_json(Path(gemini_bundle_path)),
+    )
+    if json_out:
+        write_fmp_bundle(Path(json_out), merged)
+    print(json.dumps(merged, indent=2))
     return 0
 
 
@@ -138,9 +177,22 @@ def build_parser() -> argparse.ArgumentParser:
     fetch_fmp_bundle.add_argument("tickers", nargs="+")
     fetch_fmp_bundle.add_argument("--json-out")
 
+    fetch_gemini_bundle = subparsers.add_parser("fetch-gemini-bundle")
+    fetch_gemini_bundle.add_argument("tickers", nargs="+")
+    fetch_gemini_bundle.add_argument("--json-out")
+    fetch_gemini_bundle.add_argument("--focus")
+    fetch_gemini_bundle.add_argument("--research-question")
+    fetch_gemini_bundle.add_argument("--model")
+
+    merge_raw_bundles = subparsers.add_parser("merge-raw-bundles")
+    merge_raw_bundles.add_argument("fmp_bundle_path")
+    merge_raw_bundles.add_argument("gemini_bundle_path")
+    merge_raw_bundles.add_argument("--json-out")
+
     subparsers.add_parser("show-scan-template")
     subparsers.add_parser("show-raw-scan-template")
     subparsers.add_parser("show-scan-schema")
+    subparsers.add_parser("show-gemini-schema")
     return parser
 
 
@@ -168,8 +220,20 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run_judge(args.report_path, args.execution_log_path)
     if args.command == "fetch-fmp-bundle":
         return _cmd_fetch_fmp_bundle(args.tickers, args.json_out)
+    if args.command == "fetch-gemini-bundle":
+        return _cmd_fetch_gemini_bundle(
+            args.tickers,
+            args.json_out,
+            args.focus,
+            args.research_question,
+            args.model,
+        )
+    if args.command == "merge-raw-bundles":
+        return _cmd_merge_raw_bundles(args.fmp_bundle_path, args.gemini_bundle_path, args.json_out)
     if args.command == "show-scan-schema":
         return _cmd_show_scan_schema()
+    if args.command == "show-gemini-schema":
+        return _cmd_show_gemini_schema()
 
     parser.print_help()
     return 1

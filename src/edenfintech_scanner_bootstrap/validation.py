@@ -14,6 +14,7 @@ EXPECTED_CONTRACTS = {
 }
 
 EXPECTED_METHOD_FILES = {
+    "gemini-raw-bundle.schema.json",
     "scan-input.schema.json",
     "strategy-rules.md",
     "scoring-formulas.md",

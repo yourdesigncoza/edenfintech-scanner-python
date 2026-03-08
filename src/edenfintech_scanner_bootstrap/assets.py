@@ -32,6 +32,10 @@ def scan_input_schema_path() -> Path:
     return methodology_root() / "scan-input.schema.json"
 
 
+def gemini_raw_bundle_schema_path() -> Path:
+    return methodology_root() / "gemini-raw-bundle.schema.json"
+
+
 def scan_report_schema_path() -> Path:
     return methodology_root() / "scan-report.schema.json"
 

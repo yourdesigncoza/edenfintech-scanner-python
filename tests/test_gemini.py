@@ -1,0 +1,219 @@
+from __future__ import annotations
+
+import json
+import unittest
+
+from edenfintech_scanner_bootstrap.config import AppConfig
+from edenfintech_scanner_bootstrap.gemini import (
+    DEFAULT_GEMINI_MODEL,
+    build_gemini_bundle_with_config,
+    merge_fmp_and_gemini_bundles,
+)
+
+
+def _gemini_response(payload: dict) -> dict:
+    return {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "text": json.dumps(payload),
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+
+class GeminiTest(unittest.TestCase):
+    def test_builds_retrieval_only_bundle(self) -> None:
+        seen_requests: list[dict] = []
+
+        def transport(url: str, headers: dict[str, str], payload: dict) -> dict:
+            seen_requests.append({"url": url, "headers": headers, "payload": payload})
+            return _gemini_response(
+                {
+                    "research_notes": [
+                        {
+                            "claim": "Recent filings highlight steady vertical software adoption.",
+                            "source_title": "Company investor presentation",
+                            "source_url": "https://example.com/investor",
+                        }
+                    ],
+                    "catalyst_evidence": [
+                        {
+                            "claim": "A platform rollout is scheduled for 2026.",
+                            "source_title": "Product launch note",
+                            "source_url": "https://example.com/launch",
+                        }
+                    ],
+                    "risk_evidence": [],
+                    "management_observations": [],
+                    "moat_observations": [],
+                    "precedent_observations": [],
+                    "epistemic_anchors": [],
+                }
+            )
+
+        bundle = build_gemini_bundle_with_config(
+            ["RAW1"],
+            config=AppConfig(
+                fmp_api_key=None,
+                gemini_api_key="gemini-test-key",
+                openai_api_key=None,
+                codex_judge_model="gpt-5-codex",
+            ),
+            transport=transport,
+            focus="fintech vertical software",
+            research_question="Collect source-backed catalysts and risks.",
+        )
+
+        self.assertEqual(bundle["scan_parameters"]["api"], "Gemini")
+        self.assertEqual(len(bundle["raw_candidates"]), 1)
+        self.assertEqual(bundle["raw_candidates"][0]["ticker"], "RAW1")
+        self.assertEqual(
+            bundle["raw_candidates"][0]["gemini_context"]["prompt_context"]["model"],
+            DEFAULT_GEMINI_MODEL,
+        )
+        self.assertIn("googleSearch", seen_requests[0]["payload"]["tools"][0])
+        self.assertEqual(
+            seen_requests[0]["payload"]["generationConfig"]["responseMimeType"],
+            "application/json",
+        )
+
+    def test_requires_gemini_key(self) -> None:
+        with self.assertRaisesRegex(ValueError, "missing required configuration: gemini_api_key"):
+            build_gemini_bundle_with_config(
+                ["RAW1"],
+                config=AppConfig(
+                    fmp_api_key=None,
+                    gemini_api_key=None,
+                    openai_api_key=None,
+                    codex_judge_model="gpt-5-codex",
+                ),
+            )
+
+    def test_rejects_methodology_keys_in_model_output(self) -> None:
+        def transport(url: str, headers: dict[str, str], payload: dict) -> dict:
+            return _gemini_response(
+                {
+                    "research_notes": [],
+                    "catalyst_evidence": [],
+                    "risk_evidence": [],
+                    "management_observations": [],
+                    "moat_observations": [],
+                    "precedent_observations": [],
+                    "epistemic_anchors": [],
+                    "screening_inputs": {"solvency": "pass"},
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "forbidden methodology keys: screening_inputs"):
+            build_gemini_bundle_with_config(
+                ["RAW1"],
+                config=AppConfig(
+                    fmp_api_key=None,
+                    gemini_api_key="gemini-test-key",
+                    openai_api_key=None,
+                    codex_judge_model="gpt-5-codex",
+                ),
+                transport=transport,
+            )
+
+    def test_merge_combines_fmp_and_gemini_without_changing_boundary(self) -> None:
+        fmp_bundle = {
+            "title": "EdenFinTech FMP Raw Bundle - RAW1, RAW2",
+            "scan_date": "2026-03-08",
+            "version": "v1",
+            "scan_parameters": {
+                "scan_mode": "specific_tickers",
+                "focus": "RAW1, RAW2",
+                "api": "Financial Modeling Prep",
+            },
+            "portfolio_context": {
+                "current_positions": 2,
+                "max_positions": 12,
+            },
+            "methodology_notes": [
+                "This bundle was fetched from FMP and contains deterministic market and financial inputs only."
+            ],
+            "raw_candidates": [
+                {
+                    "ticker": "RAW1",
+                    "cluster_name": "raw1-cluster",
+                    "industry": "Industrial Components",
+                    "current_price": 24.0,
+                },
+                {
+                    "ticker": "RAW2",
+                    "cluster_name": "raw2-cluster",
+                    "industry": "Payments",
+                    "current_price": 18.0,
+                },
+            ],
+        }
+        gemini_bundle = {
+            "title": "EdenFinTech Gemini Raw Bundle - RAW1, RAW3",
+            "scan_date": "2026-03-08",
+            "version": "v1",
+            "scan_parameters": {
+                "scan_mode": "specific_tickers",
+                "focus": "RAW1, RAW3",
+                "api": "Gemini",
+            },
+            "methodology_notes": [
+                "This bundle was fetched from Gemini and contains sourced qualitative evidence only."
+            ],
+            "raw_candidates": [
+                {
+                    "ticker": "RAW1",
+                    "gemini_context": {
+                        "prompt_context": {
+                            "model": DEFAULT_GEMINI_MODEL,
+                            "research_question": "Collect source-backed catalysts and risks.",
+                            "search_scope": "RAW1, RAW3",
+                        },
+                        "research_notes": [],
+                        "catalyst_evidence": [],
+                        "risk_evidence": [],
+                        "management_observations": [],
+                        "moat_observations": [],
+                        "precedent_observations": [],
+                        "epistemic_anchors": [],
+                    },
+                },
+                {
+                    "ticker": "RAW3",
+                    "gemini_context": {
+                        "prompt_context": {
+                            "model": DEFAULT_GEMINI_MODEL,
+                            "research_question": "Collect source-backed catalysts and risks.",
+                            "search_scope": "RAW1, RAW3",
+                        },
+                        "research_notes": [],
+                        "catalyst_evidence": [],
+                        "risk_evidence": [],
+                        "management_observations": [],
+                        "moat_observations": [],
+                        "precedent_observations": [],
+                        "epistemic_anchors": [],
+                    },
+                },
+            ],
+        }
+
+        merged = merge_fmp_and_gemini_bundles(fmp_bundle, gemini_bundle)
+
+        self.assertEqual(merged["scan_parameters"]["api"], "Financial Modeling Prep + Gemini")
+        self.assertEqual(len(merged["raw_candidates"]), 3)
+        raw1 = next(candidate for candidate in merged["raw_candidates"] if candidate["ticker"] == "RAW1")
+        raw3 = next(candidate for candidate in merged["raw_candidates"] if candidate["ticker"] == "RAW3")
+        self.assertEqual(raw1["industry"], "Industrial Components")
+        self.assertIn("gemini_context", raw1)
+        self.assertEqual(list(raw3), ["ticker", "gemini_context"])
+
+
+if __name__ == "__main__":
+    unittest.main()
