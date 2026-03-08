@@ -12,7 +12,7 @@ markdown summaries without changing the underlying methodology.
 - Canonical rulebook aligned to `strategy-rules.md`
 - Regression fixtures copied from existing scan artifacts
 - A deterministic Python pipeline for screening, analysis, epistemic review, report assembly, execution-log generation, and config-gated judge review
-- A CLI for validating assets, importing raw research bundles, and executing scans from JSON input
+- A CLI for validating assets, fetching FMP raw bundles, importing raw research bundles, and executing scans from JSON input
 
 ## Commands
 
@@ -23,6 +23,7 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-contract screeni
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-template
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-raw-scan-template
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-schema
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-fmp-bundle RAW1 RAW2 --json-out fmp-raw.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-scan-input raw-input.json --json-out input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-scan input.json --json-out report.json --markdown-out report.md --execution-log-out execution-log.md
@@ -63,3 +64,8 @@ disagrees with the vendored `strategy-rules.md`, the methodology file wins.
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the
 existing `codex_final_judge` contract.
+
+`fetch-fmp-bundle` is retrieval-only. It emits raw-bundle fields from Financial
+Modeling Prep, including current price, derived `% off ATH`, revenue history,
+share-count, and FCF-margin history. It does not emit final scan-input payloads
+or methodology decisions directly.

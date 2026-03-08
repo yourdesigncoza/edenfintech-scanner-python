@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .assets import contract_path, load_json, scan_input_schema_path
 from .config import load_config
+from .fmp import build_fmp_bundle_with_config, write_fmp_bundle
 from .importers import build_scan_input_file, load_raw_scan_template_text
 from .judge import run_judge_file
 from .pipeline import load_scan_input_template_text, run_scan_file, validate_scan_input_file
@@ -94,6 +95,15 @@ def _cmd_run_judge(report_path: str, execution_log_path: str) -> int:
     return 0
 
 
+def _cmd_fetch_fmp_bundle(tickers: list[str], json_out: str | None) -> int:
+    config = load_config()
+    bundle = build_fmp_bundle_with_config(tickers, config=config)
+    if json_out:
+        write_fmp_bundle(Path(json_out), bundle)
+    print(json.dumps(bundle, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate EdenFinTech Python bootstrap assets")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -124,6 +134,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_judge.add_argument("report_path")
     run_judge.add_argument("execution_log_path")
 
+    fetch_fmp_bundle = subparsers.add_parser("fetch-fmp-bundle")
+    fetch_fmp_bundle.add_argument("tickers", nargs="+")
+    fetch_fmp_bundle.add_argument("--json-out")
+
     subparsers.add_parser("show-scan-template")
     subparsers.add_parser("show-raw-scan-template")
     subparsers.add_parser("show-scan-schema")
@@ -152,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_show_raw_scan_template()
     if args.command == "run-judge":
         return _cmd_run_judge(args.report_path, args.execution_log_path)
+    if args.command == "fetch-fmp-bundle":
+        return _cmd_fetch_fmp_bundle(args.tickers, args.json_out)
     if args.command == "show-scan-schema":
         return _cmd_show_scan_schema()
 
