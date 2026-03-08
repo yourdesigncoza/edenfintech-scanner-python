@@ -9,6 +9,7 @@
     "scan_parameters",
     "source_bundle",
     "completion_status",
+    "generation_metadata",
     "methodology_notes",
     "structured_candidates"
   ],
@@ -287,6 +288,7 @@
         "ticker",
         "evidence_context",
         "evidence_fingerprint",
+        "field_provenance",
         "screening_inputs"
       ],
       "properties": {

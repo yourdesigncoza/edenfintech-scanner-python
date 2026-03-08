@@ -12,6 +12,34 @@ from .schemas import SchemaValidationError, validate_instance
 RAW_CHECK_ORDER = ["solvency", "dilution", "revenue_growth", "roic", "valuation"]
 RAW_PCS_ORDER = ["q1_operational", "q2_regulatory", "q3_precedent", "q4_nonbinary", "q5_macro"]
 PLACEHOLDER_TEXT = "__REQUIRED__"
+REQUIRED_PROVENANCE_FIELDS = [
+    "screening_inputs.industry_understandable",
+    "screening_inputs.industry_in_secular_decline",
+    "screening_inputs.double_plus_potential",
+    "screening_inputs.solvency",
+    "screening_inputs.dilution",
+    "screening_inputs.revenue_growth",
+    "screening_inputs.roic",
+    "screening_inputs.valuation",
+    "analysis_inputs.margin_trend_gate",
+    "analysis_inputs.final_cluster_status",
+    "analysis_inputs.catalyst_classification",
+    "analysis_inputs.dominant_risk_type",
+    "analysis_inputs.issues_and_fixes",
+    "analysis_inputs.moat_assessment",
+    "analysis_inputs.thesis_summary",
+    "analysis_inputs.catalysts",
+    "analysis_inputs.key_risks",
+    "analysis_inputs.base_case_assumptions",
+    "analysis_inputs.worst_case_assumptions",
+    "analysis_inputs.probability_inputs",
+    "analysis_inputs.exception_candidate",
+    "epistemic_inputs.q1_operational",
+    "epistemic_inputs.q2_regulatory",
+    "epistemic_inputs.q3_precedent",
+    "epistemic_inputs.q4_nonbinary",
+    "epistemic_inputs.q5_macro",
+]
 
 
 def _load_schema() -> dict:
@@ -63,6 +91,53 @@ def _contains_placeholder(value: object) -> bool:
     if isinstance(value, dict):
         return any(_contains_placeholder(item) for item in value.values())
     return False
+
+
+def _template_field_provenance(evidence_context: dict) -> list[dict]:
+    summary = f"Evidence fingerprint {_fingerprint(evidence_context)}"
+    return [
+        {
+            "field_path": field_path,
+            "status": "MACHINE_DRAFT",
+            "rationale": "This field still requires human review and explicit replacement or confirmation.",
+            "evidence_refs": [
+                {
+                    "kind": "evidence_context",
+                    "path": "evidence_context",
+                    "summary": summary,
+                }
+            ],
+        }
+        for field_path in REQUIRED_PROVENANCE_FIELDS
+    ]
+
+
+def _validate_finalization_provenance(candidate: dict) -> None:
+    provenance = candidate.get("field_provenance")
+    if not isinstance(provenance, list) or not provenance:
+        raise ValueError(f"structured candidate {candidate.get('ticker')} must include field_provenance before apply")
+
+    provenance_by_path: dict[str, dict] = {}
+    for item in provenance:
+        if not isinstance(item, dict):
+            raise ValueError(f"structured candidate {candidate.get('ticker')} has malformed field_provenance entries")
+        field_path = item.get("field_path")
+        status = item.get("status")
+        if not isinstance(field_path, str) or not field_path:
+            raise ValueError(f"structured candidate {candidate.get('ticker')} has field_provenance without field_path")
+        if field_path in provenance_by_path:
+            raise ValueError(f"structured candidate {candidate.get('ticker')} has duplicate provenance for {field_path}")
+        provenance_by_path[field_path] = item
+        if status == "MACHINE_DRAFT":
+            raise ValueError(
+                f"structured candidate {candidate.get('ticker')} still has MACHINE_DRAFT provenance for {field_path}"
+            )
+
+    missing = [field_path for field_path in REQUIRED_PROVENANCE_FIELDS if field_path not in provenance_by_path]
+    if missing:
+        raise ValueError(
+            f"structured candidate {candidate.get('ticker')} is missing provenance for: {', '.join(missing)}"
+        )
 
 
 def validate_structured_analysis(payload: dict) -> None:
@@ -142,6 +217,7 @@ def structured_analysis_template(raw_bundle: dict) -> dict:
                 "ticker": raw_candidate["ticker"],
                 "evidence_context": evidence_context,
                 "evidence_fingerprint": _fingerprint(evidence_context),
+                "field_provenance": _template_field_provenance(evidence_context),
                 "screening_inputs": {
                     "industry_understandable": False,
                     "industry_in_secular_decline": False,
@@ -174,6 +250,15 @@ def structured_analysis_template(raw_bundle: dict) -> dict:
         },
         "completion_status": "DRAFT",
         "completion_note": f"Replace all {PLACEHOLDER_TEXT} markers and set completion_status to FINALIZED before applying this overlay.",
+        "generation_metadata": {
+            "source": "build_structured_analysis_template",
+            "generator_version": "v1",
+            "raw_bundle_fingerprint": _raw_bundle_fingerprint(raw_bundle),
+            "notes": [
+                "This is a manual-review scaffold, not an executable overlay.",
+                "All field_provenance entries start as MACHINE_DRAFT and must be updated during human review.",
+            ],
+        },
         "methodology_notes": [
             "This payload is the current automation boundary between raw evidence retrieval and deterministic pipeline execution.",
             f"The generated template is intentionally non-executable until every {PLACEHOLDER_TEXT} marker is replaced.",
@@ -210,6 +295,12 @@ def apply_structured_analysis(raw_bundle: dict, structured_payload: dict) -> dic
     if source_bundle.get("raw_bundle_fingerprint") != _raw_bundle_fingerprint(raw_bundle):
         raise ValueError("structured analysis source bundle fingerprint does not match the current raw bundle")
 
+    generation_metadata = structured_payload.get("generation_metadata")
+    if not isinstance(generation_metadata, dict):
+        raise ValueError("structured analysis must include generation_metadata before apply")
+    if generation_metadata.get("raw_bundle_fingerprint") != _raw_bundle_fingerprint(raw_bundle):
+        raise ValueError("structured analysis generation metadata fingerprint does not match the current raw bundle")
+
     structured_by_ticker: dict[str, dict] = {}
     for candidate in structured_candidates:
         if not isinstance(candidate, dict) or not isinstance(candidate.get("ticker"), str):
@@ -219,6 +310,7 @@ def apply_structured_analysis(raw_bundle: dict, structured_payload: dict) -> dic
             raise ValueError(f"duplicate structured candidate for ticker {ticker}")
         if _contains_placeholder(candidate):
             raise ValueError(f"structured candidate {ticker} still contains placeholder markers")
+        _validate_finalization_provenance(candidate)
         structured_by_ticker[ticker] = candidate
 
     merged = deepcopy(raw_bundle)

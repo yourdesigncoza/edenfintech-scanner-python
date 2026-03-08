@@ -84,7 +84,12 @@ def _finalized_overlay(template_path: Path, out_path: Path) -> Path:
     payload = json.loads(template_path.read_text())
     payload["completion_status"] = "FINALIZED"
     payload["completion_note"] = "Reviewed against the fetched raw bundle."
+    payload["generation_metadata"]["source"] = "human_review"
+    payload["generation_metadata"]["notes"].append("Human review completed before finalization.")
     for candidate in payload["structured_candidates"]:
+        for provenance in candidate["field_provenance"]:
+            provenance["status"] = "HUMAN_CONFIRMED"
+            provenance["rationale"] = "Human reviewer confirmed this field against the fetched evidence."
         candidate["screening_inputs"]["industry_understandable"] = True
         candidate["screening_inputs"]["double_plus_potential"] = True
         for check_name in ["solvency", "dilution", "revenue_growth", "roic", "valuation"]:
@@ -160,6 +165,33 @@ class LiveScanTest(unittest.TestCase):
             self.assertIn("report_json", report_result.written_paths)
             self.assertTrue(report_result.written_paths["report_json"].exists())
             self.assertTrue(report_result.written_paths["judge_json"].exists())
+
+    def test_machine_draft_cannot_be_promoted_by_flipping_completion_status_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            raw_result = run_live_scan(
+                ["RAW1"],
+                out_dir=out_dir,
+                stop_at="raw-bundle",
+                config=_config(),
+                fmp_transport=_mock_fmp_transport,
+                gemini_transport=_mock_gemini_transport,
+            )
+            promoted = json.loads(raw_result.written_paths["structured_analysis_draft"].read_text())
+            promoted["completion_status"] = "FINALIZED"
+            promoted_path = out_dir / "machine-promoted.json"
+            promoted_path.write_text(json.dumps(promoted, indent=2))
+
+            with self.assertRaisesRegex(ValueError, "MACHINE_DRAFT provenance"):
+                run_live_scan(
+                    ["RAW1"],
+                    out_dir=out_dir / "promoted-run",
+                    stop_at="scan-input",
+                    structured_analysis_path=promoted_path,
+                    config=_config(),
+                    fmp_transport=_mock_fmp_transport,
+                    gemini_transport=_mock_gemini_transport,
+                )
 
     def test_run_live_scan_rejects_unedited_template_for_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -242,7 +274,10 @@ class LiveScanTest(unittest.TestCase):
             )
             malformed_overlay = json.loads(raw_result.written_paths["structured_analysis_template"].read_text())
             malformed_overlay["completion_status"] = "FINALIZED"
+            malformed_overlay["generation_metadata"]["source"] = "human_review"
             candidate = malformed_overlay["structured_candidates"][0]
+            for provenance in candidate["field_provenance"]:
+                provenance["status"] = "HUMAN_CONFIRMED"
             for check_name in ["solvency", "dilution", "revenue_growth", "roic", "valuation"]:
                 candidate["screening_inputs"][check_name]["verdict"] = "PASS"
                 candidate["screening_inputs"][check_name]["evidence"] = "ok"

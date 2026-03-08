@@ -84,7 +84,9 @@ the raw bundle fingerprint it was generated from.
 the same merged raw bundle. It still keeps `completion_status: DRAFT`, adds
 `generation_metadata`, and records `field_provenance` with
 `status: MACHINE_DRAFT` per generated field so human review can see what was
-inferred from which raw evidence.
+inferred from which raw evidence. A draft cannot be promoted just by changing
+metadata: finalization now requires those provenance entries to be converted
+away from `MACHINE_DRAFT`.
 
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the
