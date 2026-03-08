@@ -14,6 +14,7 @@ markdown summaries without changing the underlying methodology.
 - A deterministic Python pipeline for screening, analysis, epistemic review, report assembly, execution-log generation, and config-gated judge review
 - A CLI for validating assets, fetching FMP and Gemini raw bundles, generating structured-analysis overlays, merging/importing bundles, and executing scans from JSON input
 - A machine-draft field-generation layer that emits auditable structured-analysis drafts with provenance from merged raw evidence
+- GitHub Actions CI that runs unit tests, asset validation, and regression checks on every push and pull request
 
 ## Commands
 
