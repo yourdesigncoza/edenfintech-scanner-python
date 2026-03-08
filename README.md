@@ -57,6 +57,59 @@ tests/
   fixtures/
 ```
 
+## Safest Path
+
+Use this as the canonical operator flow when you want a reviewable scan without
+skipping any boundary:
+
+1. Build the initial review package.
+
+```bash
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package RAW1 RAW2 --out-dir runs/review-package
+```
+
+This writes raw bundles, the merged bundle, `structured-analysis-template.json`,
+`structured-analysis-draft.json`, `review-checklist.*`, and
+`review-note-suggestions.*`.
+
+2. Review the checklist and note suggestions.
+
+Start with `review-checklist.md` and `review-note-suggestions.md` in the package
+directory. If you want to persist targeted note updates without changing any
+judgments, use:
+
+```bash
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli review-structured-analysis \
+  runs/review-package/structured-analysis-draft.json \
+  --json-out runs/review-package/review-checklist.json \
+  --markdown-out runs/review-package/review-checklist.md \
+  --overlay-out runs/review-package/structured-analysis-reviewed.json \
+  --set-note screening_inputs.solvency="Reviewer checked solvency against cash generation history."
+```
+
+3. Finalize the reviewed overlay explicitly.
+
+```bash
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli finalize-structured-analysis \
+  runs/review-package/structured-analysis-reviewed.json \
+  --reviewer "Analyst Name" \
+  --json-out runs/review-package/structured-analysis-finalized.json
+```
+
+4. Rebuild the package with the finalized overlay.
+
+```bash
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package \
+  RAW1 RAW2 \
+  --out-dir runs/review-package-final \
+  --structured-analysis-path runs/review-package/structured-analysis-finalized.json
+```
+
+5. Inspect the final artifacts.
+
+The final package includes `report.json`, `report.md`, `execution-log.md`,
+`judge.json`, and a copy of the exact finalized overlay that drove the scan.
+
 ## Scan Input Model
 
 `run-scan` expects a structured JSON payload. Each candidate must include

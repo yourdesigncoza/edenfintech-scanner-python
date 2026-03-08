@@ -184,11 +184,17 @@ class ReviewPackageTest(unittest.TestCase):
                 "report_markdown",
                 "execution_log",
                 "judge_json",
+                "structured_analysis_finalized",
                 "review_checklist_json",
                 "review_note_suggestions_json",
             ]:
                 self.assertIn(key, result.written_paths)
                 self.assertTrue(result.written_paths[key].exists())
+            packaged_overlay = json.loads(result.written_paths["structured_analysis_finalized"].read_text(encoding="utf-8"))
+            original_overlay = json.loads(finalized_overlay.read_text(encoding="utf-8"))
+            self.assertEqual(packaged_overlay, original_overlay)
+            manifest = json.loads(result.written_paths["review_package_manifest"].read_text(encoding="utf-8"))
+            self.assertIn("structured_analysis_finalized", manifest["artifacts"])
 
 
 if __name__ == "__main__":

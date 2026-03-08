@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +47,12 @@ def build_review_package(
 
     written_paths = dict(live_scan_result.written_paths)
     review_source = structured_analysis_path or live_scan_result.written_paths["structured_analysis_draft"]
+    if structured_analysis_path is not None:
+        packaged_overlay_path = out_dir / "structured-analysis-finalized.json"
+        packaged_overlay_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(structured_analysis_path, packaged_overlay_path)
+        written_paths["structured_analysis_finalized"] = packaged_overlay_path
+        review_source = packaged_overlay_path
 
     review_checklist_json = out_dir / "review-checklist.json"
     review_checklist_md = out_dir / "review-checklist.md"
