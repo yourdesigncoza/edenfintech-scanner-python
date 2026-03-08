@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from edenfintech_scanner_bootstrap.config import AppConfig
-from edenfintech_scanner_bootstrap.fmp import build_fmp_bundle_with_config
+from edenfintech_scanner_bootstrap.fmp import FmpClient, build_fmp_bundle_with_config, build_raw_candidate_from_fmp
 
 
 def _mock_fmp_transport(endpoint: str, params: dict[str, str]):
@@ -107,6 +107,57 @@ class FmpTest(unittest.TestCase):
                 ),
                 transport=_mock_fmp_transport,
             )
+
+    def test_raw_candidate_handles_unsorted_statements_and_year_mismatch(self) -> None:
+        def transport(endpoint: str, params: dict[str, str]):
+            responses = {
+                "profile/RAW1": [{"industry": "Industrial Components"}],
+                "quote/RAW1": [{"price": 24.0}],
+                "historical-price-full/RAW1": {
+                    "historical": [
+                        {"date": "2024-04-01", "close": 92.31},
+                        {"date": "2026-03-07", "close": 24.0},
+                    ]
+                },
+                "income-statement/RAW1": [
+                    {"date": "2023-12-31", "revenue": 2_900_000_000, "weightedAverageShsOutDil": 114_000_000},
+                    {"date": "2025-12-31", "revenue": 3_400_000_000, "weightedAverageShsOutDil": 110_000_000},
+                    {"date": "2024-12-31", "revenue": 3_100_000_000, "weightedAverageShsOutDil": 112_000_000},
+                ],
+                "cash-flow-statement/RAW1": [
+                    {"date": "2023-09-30", "freeCashFlow": 203_000_000},
+                    {"date": "2025-09-30", "freeCashFlow": 340_000_000},
+                    {"date": "2024-09-30", "freeCashFlow": 248_000_000},
+                ],
+            }
+            return responses[endpoint]
+
+        client = FmpClient("fmp-test-key", transport=transport)
+        candidate = build_raw_candidate_from_fmp("RAW1", client)
+
+        self.assertEqual(candidate["fmp_context"]["derived"]["shares_m_latest"], 110.0)
+        self.assertEqual(candidate["fmp_context"]["derived"]["latest_revenue_b"], 3.4)
+        self.assertEqual(candidate["fmp_context"]["derived"]["latest_fcf_margin_pct"], 10.0)
+        self.assertEqual(len(candidate["fmp_context"]["derived"]["fcf_margin_history_pct"]), 3)
+
+    def test_raw_candidate_raises_controlled_error_for_missing_price_history(self) -> None:
+        def transport(endpoint: str, params: dict[str, str]):
+            responses = {
+                "profile/RAW1": [{"industry": "Industrial Components"}],
+                "quote/RAW1": [{"price": 24.0}],
+                "historical-price-full/RAW1": {"historical": []},
+                "income-statement/RAW1": [
+                    {"date": "2025-12-31", "revenue": 3_400_000_000, "weightedAverageShsOutDil": 110_000_000}
+                ],
+                "cash-flow-statement/RAW1": [
+                    {"date": "2025-12-31", "freeCashFlow": 340_000_000}
+                ],
+            }
+            return responses[endpoint]
+
+        client = FmpClient("fmp-test-key", transport=transport)
+        with self.assertRaisesRegex(RuntimeError, "historical prices did not contain usable close data"):
+            build_raw_candidate_from_fmp("RAW1", client)
 
 
 if __name__ == "__main__":

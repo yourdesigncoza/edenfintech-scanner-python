@@ -20,6 +20,23 @@ def _round4(value: float) -> float:
     return round(value, 4)
 
 
+def _statement_sort_key(item: dict) -> tuple[int, str]:
+    raw_date = item.get("date")
+    if not isinstance(raw_date, str):
+        return (0, "")
+    return (1, raw_date)
+
+
+def _sorted_desc(items: list[dict]) -> list[dict]:
+    return sorted(items, key=_statement_sort_key, reverse=True)
+
+
+def _year_from_date(value: object) -> str | None:
+    if not isinstance(value, str) or len(value) < 4:
+        return None
+    return value[:4]
+
+
 def _default_transport(endpoint: str, params: dict[str, str]) -> list[dict] | dict:
     query = parse.urlencode(params)
     url = f"https://financialmodelingprep.com/api/v3/{endpoint}?{query}"
@@ -58,19 +75,22 @@ class FmpClient:
         payload = self._get(f"historical-price-full/{ticker}", serietype="line")
         if not isinstance(payload, dict) or "historical" not in payload:
             raise RuntimeError(f"FMP historical price response missing for {ticker}")
-        return payload["historical"]
+        historical = payload["historical"]
+        if not isinstance(historical, list):
+            raise RuntimeError(f"FMP historical price response malformed for {ticker}")
+        return historical
 
     def income_statements(self, ticker: str, limit: int = 5) -> list[dict]:
         payload = self._get(f"income-statement/{ticker}", limit=str(limit), period="annual")
         if not isinstance(payload, list) or not payload:
             raise RuntimeError(f"FMP income statement response missing for {ticker}")
-        return payload
+        return _sorted_desc(payload)
 
     def cash_flow_statements(self, ticker: str, limit: int = 5) -> list[dict]:
         payload = self._get(f"cash-flow-statement/{ticker}", limit=str(limit), period="annual")
         if not isinstance(payload, list) or not payload:
             raise RuntimeError(f"FMP cash flow response missing for {ticker}")
-        return payload
+        return _sorted_desc(payload)
 
 
 def _pct_off_ath(current_price: float, all_time_high: float) -> float:
@@ -80,16 +100,16 @@ def _pct_off_ath(current_price: float, all_time_high: float) -> float:
 
 
 def _shares_millions(income_statements: list[dict]) -> float:
-    latest = income_statements[0]
-    shares = latest.get("weightedAverageShsOutDil") or latest.get("weightedAverageShsOut")
-    if not isinstance(shares, (int, float)) or shares <= 0:
-        raise RuntimeError("FMP income statement did not contain usable share-count data")
-    return _round4(float(shares) / 1_000_000)
+    for statement in _sorted_desc(income_statements):
+        shares = statement.get("weightedAverageShsOutDil") or statement.get("weightedAverageShsOut")
+        if isinstance(shares, (int, float)) and shares > 0:
+            return _round4(float(shares) / 1_000_000)
+    raise RuntimeError("FMP income statement did not contain usable share-count data")
 
 
 def _revenue_history_billions(income_statements: list[dict]) -> list[dict]:
     history: list[dict] = []
-    for statement in income_statements:
+    for statement in _sorted_desc(income_statements):
         revenue = statement.get("revenue")
         if isinstance(revenue, (int, float)):
             history.append(
@@ -102,10 +122,20 @@ def _revenue_history_billions(income_statements: list[dict]) -> list[dict]:
 
 
 def _fcf_margin_history_pct(income_statements: list[dict], cash_flow_statements: list[dict]) -> list[dict]:
-    income_by_date = {statement.get("date"): statement for statement in income_statements}
+    sorted_income = _sorted_desc(income_statements)
+    sorted_cashflows = _sorted_desc(cash_flow_statements)
+    income_by_date = {statement.get("date"): statement for statement in sorted_income if isinstance(statement.get("date"), str)}
+    income_by_year = {
+        _year_from_date(statement.get("date")): statement
+        for statement in sorted_income
+        if _year_from_date(statement.get("date")) is not None
+    }
     history: list[dict] = []
-    for cashflow in cash_flow_statements:
-        statement = income_by_date.get(cashflow.get("date"))
+    for cashflow in sorted_cashflows:
+        cashflow_date = cashflow.get("date")
+        statement = income_by_date.get(cashflow_date)
+        if statement is None:
+            statement = income_by_year.get(_year_from_date(cashflow_date))
         if statement is None:
             continue
         revenue = statement.get("revenue")
@@ -129,7 +159,10 @@ def build_raw_candidate_from_fmp(ticker: str, client: FmpClient) -> dict:
     cash_flows = client.cash_flow_statements(ticker)
 
     current_price = float(quote["price"])
-    all_time_high = max(float(item["close"]) for item in historical_prices if isinstance(item.get("close"), (int, float)))
+    numeric_closes = [float(item["close"]) for item in historical_prices if isinstance(item.get("close"), (int, float))]
+    if not numeric_closes:
+        raise RuntimeError(f"FMP historical prices did not contain usable close data for {ticker}")
+    all_time_high = max(numeric_closes)
     revenue_history = _revenue_history_billions(income_statements)
     fcf_history = _fcf_margin_history_pct(income_statements, cash_flows)
     shares_m = _shares_millions(income_statements)
