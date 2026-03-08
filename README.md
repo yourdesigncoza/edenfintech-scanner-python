@@ -68,22 +68,23 @@ skipping any boundary:
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package RAW1 RAW2 --out-dir runs/review-package
 ```
 
-This writes raw bundles, the merged bundle, `structured-analysis-template.json`,
-`structured-analysis-draft.json`, `review-checklist.*`, and
-`review-note-suggestions.*`.
+This writes raw retrieval artifacts into `raw/` and review helpers into
+`review/`, including `raw/structured-analysis-template.json`,
+`raw/structured-analysis-draft.json`, `review/review-checklist.*`, and
+`review/review-note-suggestions.*`.
 
 2. Review the checklist and note suggestions.
 
-Start with `review-checklist.md` and `review-note-suggestions.md` in the package
-directory. If you want to persist targeted note updates without changing any
-judgments, use:
+Start with `review/review-checklist.md` and
+`review/review-note-suggestions.md`. If you want to persist targeted note
+updates without changing any judgments, use:
 
 ```bash
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli review-structured-analysis \
-  runs/review-package/structured-analysis-draft.json \
-  --json-out runs/review-package/review-checklist.json \
-  --markdown-out runs/review-package/review-checklist.md \
-  --overlay-out runs/review-package/structured-analysis-reviewed.json \
+  runs/review-package/raw/structured-analysis-draft.json \
+  --json-out runs/review-package/review/review-checklist.json \
+  --markdown-out runs/review-package/review/review-checklist.md \
+  --overlay-out runs/review-package/review/structured-analysis-reviewed.json \
   --set-note screening_inputs.solvency="Reviewer checked solvency against cash generation history."
 ```
 
@@ -91,24 +92,26 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli review-structured-ana
 
 ```bash
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli finalize-structured-analysis \
-  runs/review-package/structured-analysis-reviewed.json \
+  runs/review-package/review/structured-analysis-reviewed.json \
   --reviewer "Analyst Name" \
-  --json-out runs/review-package/structured-analysis-finalized.json
+  --json-out runs/review-package/review/structured-analysis-finalized.json
 ```
 
 4. Rebuild the package with the finalized overlay.
 
 ```bash
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package \
+  PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package \
   RAW1 RAW2 \
   --out-dir runs/review-package-final \
-  --structured-analysis-path runs/review-package/structured-analysis-finalized.json
+  --structured-analysis-path runs/review-package/review/structured-analysis-finalized.json
 ```
 
 5. Inspect the final artifacts.
 
-The final package includes `report.json`, `report.md`, `execution-log.md`,
-`judge.json`, and a copy of the exact finalized overlay that drove the scan.
+The rebuilt package keeps raw retrieval files in `raw/`, review helpers in
+`review/`, and final execution artifacts in `final/`. The `final/` directory
+includes `report.json`, `report.md`, `execution-log.md`, `judge.json`, and a
+copy of the exact finalized overlay that drove the scan.
 
 ## Scan Input Model
 
@@ -172,11 +175,13 @@ does not change overlays, statuses, field values, or completion state.
 
 `build-review-package` is the thin packaging runner for operators. It reuses the
 existing live retrieval, review artifact, scan, and judge helpers to assemble a
-predictable run directory. Without a finalized structured overlay it stops at
-the raw-bundle boundary and writes the review artifacts beside the raw and
-structured-analysis files. If you provide `--structured-analysis-path`, it also
-writes the enriched raw bundle, scan input, report, execution log, judge
-output, and a package manifest.
+predictable run directory with `raw/`, `review/`, and `final/` subdirectories.
+Without a finalized structured overlay it stops at the raw-bundle boundary and
+writes review artifacts into `review/` while keeping retrieval artifacts under
+`raw/`. If you provide `--structured-analysis-path`, it also writes the
+enriched raw bundle, scan input, report, execution log, judge output, and a
+packaged copy of the finalized overlay under `final/`, plus a package manifest
+at the run root.
 
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the

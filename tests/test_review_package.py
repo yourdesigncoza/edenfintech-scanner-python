@@ -148,9 +148,16 @@ class ReviewPackageTest(unittest.TestCase):
             ]:
                 self.assertIn(key, result.written_paths)
                 self.assertTrue(result.written_paths[key].exists())
+            self.assertEqual(result.written_paths["fmp_raw"].parent.name, "raw")
+            self.assertEqual(result.written_paths["structured_analysis_draft"].parent.name, "raw")
+            self.assertEqual(result.written_paths["review_checklist_json"].parent.name, "review")
+            self.assertEqual(result.written_paths["review_note_suggestions_json"].parent.name, "review")
             self.assertNotIn("scan_input", result.written_paths)
             manifest = json.loads(result.written_paths["review_package_manifest"].read_text(encoding="utf-8"))
             self.assertEqual(manifest["stop_at"], "raw-bundle")
+            self.assertEqual(Path(manifest["directories"]["raw"]).name, "raw")
+            self.assertEqual(Path(manifest["directories"]["review"]).name, "review")
+            self.assertEqual(Path(manifest["directories"]["final"]).name, "final")
 
     def test_build_review_package_report_layout_with_finalized_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -190,11 +197,16 @@ class ReviewPackageTest(unittest.TestCase):
             ]:
                 self.assertIn(key, result.written_paths)
                 self.assertTrue(result.written_paths[key].exists())
+            self.assertEqual(result.written_paths["merged_raw"].parent.name, "raw")
+            self.assertEqual(result.written_paths["review_checklist_json"].parent.name, "review")
+            self.assertEqual(result.written_paths["structured_analysis_finalized"].parent.name, "final")
+            self.assertEqual(result.written_paths["report_json"].parent.name, "final")
             packaged_overlay = json.loads(result.written_paths["structured_analysis_finalized"].read_text(encoding="utf-8"))
             original_overlay = json.loads(finalized_overlay.read_text(encoding="utf-8"))
             self.assertEqual(packaged_overlay, original_overlay)
             manifest = json.loads(result.written_paths["review_package_manifest"].read_text(encoding="utf-8"))
             self.assertIn("structured_analysis_finalized", manifest["artifacts"])
+            self.assertEqual(Path(manifest["directories"]["final"]).name, "final")
 
 
 if __name__ == "__main__":

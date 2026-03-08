@@ -8,8 +8,15 @@ from pathlib import Path
 from .config import AppConfig
 from .fmp import FmpTransport
 from .gemini import DEFAULT_GEMINI_MODEL, GeminiTransport
+from .importers import build_scan_input
 from .live_scan import LiveScanResult, run_live_scan
-from .structured_analysis import review_structured_analysis_file, suggest_review_notes_file
+from .pipeline import run_scan
+from .reporting import write_execution_log
+from .structured_analysis import (
+    apply_structured_analysis,
+    review_structured_analysis_file,
+    suggest_review_notes_file,
+)
 
 
 @dataclass(frozen=True)
@@ -17,6 +24,11 @@ class ReviewPackageResult:
     out_dir: Path
     written_paths: dict[str, Path]
     live_scan_result: LiveScanResult
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def build_review_package(
@@ -31,12 +43,15 @@ def build_review_package(
     fmp_transport: FmpTransport | None = None,
     gemini_transport: GeminiTransport | None = None,
 ) -> ReviewPackageResult:
-    stop_at = "report" if structured_analysis_path is not None else "raw-bundle"
-    live_scan_result = run_live_scan(
+    out_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir = out_dir / "raw"
+    review_dir = out_dir / "review"
+    final_dir = out_dir / "final"
+
+    raw_live_scan_result = run_live_scan(
         tickers,
-        out_dir=out_dir,
-        stop_at=stop_at,
-        structured_analysis_path=structured_analysis_path,
+        out_dir=raw_dir,
+        stop_at="raw-bundle",
         config=config,
         fmp_transport=fmp_transport,
         gemini_transport=gemini_transport,
@@ -45,17 +60,46 @@ def build_review_package(
         gemini_model=gemini_model,
     )
 
-    written_paths = dict(live_scan_result.written_paths)
-    review_source = structured_analysis_path or live_scan_result.written_paths["structured_analysis_draft"]
+    written_paths = dict(raw_live_scan_result.written_paths)
+    stop_at = "raw-bundle"
+    review_source = raw_live_scan_result.written_paths["structured_analysis_draft"]
+
     if structured_analysis_path is not None:
-        packaged_overlay_path = out_dir / "structured-analysis-finalized.json"
+        stop_at = "report"
+        packaged_overlay_path = final_dir / "structured-analysis-finalized.json"
         packaged_overlay_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(structured_analysis_path, packaged_overlay_path)
         written_paths["structured_analysis_finalized"] = packaged_overlay_path
         review_source = packaged_overlay_path
 
-    review_checklist_json = out_dir / "review-checklist.json"
-    review_checklist_md = out_dir / "review-checklist.md"
+        merged_bundle = json.loads(written_paths["merged_raw"].read_text(encoding="utf-8"))
+        structured_payload = json.loads(packaged_overlay_path.read_text(encoding="utf-8"))
+        enriched_bundle = apply_structured_analysis(merged_bundle, structured_payload)
+        enriched_path = final_dir / "enriched-raw.json"
+        _write_json(enriched_path, enriched_bundle)
+        written_paths["enriched_raw"] = enriched_path
+
+        scan_input = build_scan_input(enriched_bundle)
+        scan_input_path = final_dir / "scan-input.json"
+        _write_json(scan_input_path, scan_input)
+        written_paths["scan_input"] = scan_input_path
+
+        artifacts = run_scan(scan_input, judge_config=config)
+        report_json_path = final_dir / "report.json"
+        report_markdown_path = final_dir / "report.md"
+        execution_log_path = final_dir / "execution-log.md"
+        judge_path = final_dir / "judge.json"
+        _write_json(report_json_path, artifacts.report_json)
+        report_markdown_path.write_text(artifacts.report_markdown, encoding="utf-8")
+        write_execution_log(execution_log_path, artifacts.report_json, artifacts.execution_log, artifacts.judge)
+        _write_json(judge_path, artifacts.judge)
+        written_paths["report_json"] = report_json_path
+        written_paths["report_markdown"] = report_markdown_path
+        written_paths["execution_log"] = execution_log_path
+        written_paths["judge_json"] = judge_path
+
+    review_checklist_json = review_dir / "review-checklist.json"
+    review_checklist_md = review_dir / "review-checklist.md"
     review_structured_analysis_file(
         review_source,
         json_out=review_checklist_json,
@@ -64,8 +108,8 @@ def build_review_package(
     written_paths["review_checklist_json"] = review_checklist_json
     written_paths["review_checklist_markdown"] = review_checklist_md
 
-    review_note_suggestions_json = out_dir / "review-note-suggestions.json"
-    review_note_suggestions_md = out_dir / "review-note-suggestions.md"
+    review_note_suggestions_json = review_dir / "review-note-suggestions.json"
+    review_note_suggestions_md = review_dir / "review-note-suggestions.md"
     suggest_review_notes_file(
         review_source,
         json_out=review_note_suggestions_json,
@@ -77,12 +121,18 @@ def build_review_package(
     manifest_path = out_dir / "review-package-manifest.json"
     manifest = {
         "out_dir": str(out_dir),
-        "stop_at": live_scan_result.stop_at,
+        "stop_at": stop_at,
+        "directories": {
+            "raw": str(raw_dir),
+            "review": str(review_dir),
+            "final": str(final_dir),
+        },
         "artifacts": {key: str(path) for key, path in written_paths.items()},
     }
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     written_paths["review_package_manifest"] = manifest_path
 
+    live_scan_result = LiveScanResult(stop_at=stop_at, out_dir=out_dir, written_paths=written_paths)
     return ReviewPackageResult(
         out_dir=out_dir,
         written_paths=written_paths,
