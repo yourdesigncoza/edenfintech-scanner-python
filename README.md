@@ -12,7 +12,7 @@ markdown summaries without changing the underlying methodology.
 - Canonical rulebook aligned to `strategy-rules.md`
 - Regression fixtures copied from existing scan artifacts
 - A deterministic Python pipeline for screening, analysis, epistemic review, report assembly, execution-log generation, and config-gated judge review
-- A CLI for validating assets, fetching FMP and Gemini raw bundles, merging them, importing raw research bundles, and executing scans from JSON input
+- A CLI for validating assets, fetching FMP and Gemini raw bundles, generating structured-analysis overlays, merging/importing bundles, and executing scans from JSON input
 
 ## Commands
 
@@ -24,13 +24,16 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-template
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-raw-scan-template
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-schema
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-gemini-schema
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-structured-analysis-schema
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-fmp-bundle RAW1 RAW2 --json-out fmp-raw.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-gemini-bundle RAW1 RAW2 --focus "payments software" --json-out gemini-raw.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli merge-raw-bundles fmp-raw.json gemini-raw.json --json-out merged-raw.json
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-structured-analysis-template merged-raw.json --json-out structured-analysis.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-scan-input raw-input.json --json-out input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-scan input.json --json-out report.json --markdown-out report.md --execution-log-out execution-log.md
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-judge report.json execution-log.md
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-live-scan RAW1 RAW2 --out-dir runs/demo --stop-at raw-bundle
 ```
 
 ## Layout
@@ -64,6 +67,14 @@ scan-input contract. Future importer code can read API keys from `.env`; see
 `.env.example` for the expected variables. If a helper or contract ever
 disagrees with the vendored `strategy-rules.md`, the methodology file wins.
 
+The current automation boundary between retrieval and the deterministic pipeline
+is the structured-analysis overlay in
+`assets/methodology/structured-analysis.schema.json`. Use
+`build-structured-analysis-template` to generate a ticker-aligned overlay
+template from a merged raw bundle, then replace the example
+`screening_inputs`, `analysis_inputs`, and `epistemic_inputs` with
+methodology-grounded judgments before building scan input or a report.
+
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the
 existing `codex_final_judge` contract.
@@ -78,4 +89,7 @@ epistemic anchors. Neither command emits scan-input payloads or methodology
 decisions directly. `merge-raw-bundles` combines overlapping FMP and Gemini
 tickers into a single combined raw bundle; it still requires
 `screening_inputs`, `analysis_inputs`, and `epistemic_inputs` before
-`build-scan-input` can succeed.
+`build-scan-input` can succeed. `run-live-scan` orchestrates the full retrieval
+flow and writes all intermediate artifacts into one directory, but by default it
+stops at `raw-bundle` and writes a structured-analysis template so the current
+boundary stays explicit.

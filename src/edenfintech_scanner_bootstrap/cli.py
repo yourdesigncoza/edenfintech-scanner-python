@@ -5,14 +5,16 @@ import json
 import sys
 from pathlib import Path
 
-from .assets import contract_path, gemini_raw_bundle_schema_path, load_json, scan_input_schema_path
+from .assets import contract_path, gemini_raw_bundle_schema_path, load_json, scan_input_schema_path, structured_analysis_schema_path
 from .config import load_config
 from .fmp import build_fmp_bundle_with_config, write_fmp_bundle
 from .gemini import build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
 from .importers import build_scan_input_file, load_raw_scan_template_text
 from .judge import run_judge_file
+from .live_scan import run_live_scan
 from .pipeline import load_scan_input_template_text, run_scan_file, validate_scan_input_file
 from .regression import run_regression_suite
+from .structured_analysis import build_structured_analysis_template_file
 from .validation import validate_assets
 
 
@@ -80,6 +82,12 @@ def _cmd_show_gemini_schema() -> int:
     return 0
 
 
+def _cmd_show_structured_analysis_schema() -> int:
+    schema = load_json(structured_analysis_schema_path())
+    print(json.dumps(schema, indent=2))
+    return 0
+
+
 def _cmd_build_scan_input(raw_input_path: str, json_out: str | None) -> int:
     load_config()
     payload = build_scan_input_file(
@@ -92,6 +100,15 @@ def _cmd_build_scan_input(raw_input_path: str, json_out: str | None) -> int:
 
 def _cmd_show_raw_scan_template() -> int:
     print(load_raw_scan_template_text(), end="")
+    return 0
+
+
+def _cmd_build_structured_analysis_template(raw_bundle_path: str, json_out: str | None) -> int:
+    payload = build_structured_analysis_template_file(
+        Path(raw_bundle_path),
+        json_out=Path(json_out) if json_out else None,
+    )
+    print(json.dumps(payload, indent=2))
     return 0
 
 
@@ -143,6 +160,39 @@ def _cmd_merge_raw_bundles(fmp_bundle_path: str, gemini_bundle_path: str, json_o
     return 0
 
 
+def _cmd_run_live_scan(
+    tickers: list[str],
+    out_dir: str,
+    stop_at: str,
+    structured_analysis_path: str | None,
+    focus: str | None,
+    research_question: str | None,
+    gemini_model: str | None,
+) -> int:
+    config = load_config()
+    result = run_live_scan(
+        tickers,
+        out_dir=Path(out_dir),
+        stop_at=stop_at,
+        structured_analysis_path=Path(structured_analysis_path) if structured_analysis_path else None,
+        config=config,
+        focus=focus,
+        research_question=research_question,
+        gemini_model=gemini_model or "gemini-3-pro-preview",
+    )
+    print(
+        json.dumps(
+            {
+                "stop_at": result.stop_at,
+                "out_dir": str(result.out_dir),
+                "written_paths": {key: str(path) for key, path in result.written_paths.items()},
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate EdenFinTech Python bootstrap assets")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -169,6 +219,10 @@ def build_parser() -> argparse.ArgumentParser:
     build_scan_input.add_argument("raw_input_path")
     build_scan_input.add_argument("--json-out")
 
+    build_structured_analysis_template = subparsers.add_parser("build-structured-analysis-template")
+    build_structured_analysis_template.add_argument("raw_bundle_path")
+    build_structured_analysis_template.add_argument("--json-out")
+
     run_judge = subparsers.add_parser("run-judge")
     run_judge.add_argument("report_path")
     run_judge.add_argument("execution_log_path")
@@ -189,10 +243,20 @@ def build_parser() -> argparse.ArgumentParser:
     merge_raw_bundles.add_argument("gemini_bundle_path")
     merge_raw_bundles.add_argument("--json-out")
 
+    run_live_scan = subparsers.add_parser("run-live-scan")
+    run_live_scan.add_argument("tickers", nargs="+")
+    run_live_scan.add_argument("--out-dir", required=True)
+    run_live_scan.add_argument("--stop-at", choices=["raw-bundle", "scan-input", "report"], default="raw-bundle")
+    run_live_scan.add_argument("--structured-analysis-path")
+    run_live_scan.add_argument("--focus")
+    run_live_scan.add_argument("--research-question")
+    run_live_scan.add_argument("--gemini-model")
+
     subparsers.add_parser("show-scan-template")
     subparsers.add_parser("show-raw-scan-template")
     subparsers.add_parser("show-scan-schema")
     subparsers.add_parser("show-gemini-schema")
+    subparsers.add_parser("show-structured-analysis-schema")
     return parser
 
 
@@ -214,6 +278,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_validate_scan_input(args.input_path)
     if args.command == "build-scan-input":
         return _cmd_build_scan_input(args.raw_input_path, args.json_out)
+    if args.command == "build-structured-analysis-template":
+        return _cmd_build_structured_analysis_template(args.raw_bundle_path, args.json_out)
     if args.command == "show-raw-scan-template":
         return _cmd_show_raw_scan_template()
     if args.command == "run-judge":
@@ -230,10 +296,22 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "merge-raw-bundles":
         return _cmd_merge_raw_bundles(args.fmp_bundle_path, args.gemini_bundle_path, args.json_out)
+    if args.command == "run-live-scan":
+        return _cmd_run_live_scan(
+            args.tickers,
+            args.out_dir,
+            args.stop_at,
+            args.structured_analysis_path,
+            args.focus,
+            args.research_question,
+            args.gemini_model,
+        )
     if args.command == "show-scan-schema":
         return _cmd_show_scan_schema()
     if args.command == "show-gemini-schema":
         return _cmd_show_gemini_schema()
+    if args.command == "show-structured-analysis-schema":
+        return _cmd_show_structured_analysis_schema()
 
     parser.print_help()
     return 1

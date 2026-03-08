@@ -20,6 +20,7 @@ EXPECTED_METHOD_FILES = {
     "scoring-formulas.md",
     "scan-report.schema.json",
     "scan-report.template.json",
+    "structured-analysis.schema.json",
 }
 
 EXPECTED_RULE_IDS = {
