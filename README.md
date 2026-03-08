@@ -57,6 +57,67 @@ tests/
   fixtures/
 ```
 
+## Terminal Quick Start
+
+Run these from the repository root:
+
+```bash
+cd /home/laudes/zoot/projects/edenfintech-scanner-python
+```
+
+### Run Tests
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -v
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-assets
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-regression
+```
+
+### Run A Live Review Package
+
+This is the first live step for a ticker such as `PYPL`:
+
+```bash
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package \
+  PYPL \
+  --out-dir runs/pypl-review
+```
+
+Review these files next:
+
+```text
+runs/pypl-review/review/review-checklist.md
+runs/pypl-review/review/review-note-suggestions.md
+runs/pypl-review/raw/structured-analysis-draft.json
+```
+
+### Run A Final Package
+
+After you have reviewed and approved the structured overlay:
+
+```bash
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli finalize-structured-analysis \
+  runs/pypl-review/review/structured-analysis-reviewed.json \
+  --reviewer "Your Name" \
+  --json-out runs/pypl-review/review/structured-analysis-finalized.json
+```
+
+```bash
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package \
+  PYPL \
+  --out-dir runs/pypl-review-final \
+  --structured-analysis-path runs/pypl-review/review/structured-analysis-finalized.json
+```
+
+Inspect the final outputs here:
+
+```text
+runs/pypl-review-final/final/report.json
+runs/pypl-review-final/final/report.md
+runs/pypl-review-final/final/execution-log.md
+runs/pypl-review-final/final/judge.json
+```
+
 ## Safest Path
 
 Use this as the canonical operator flow when you want a reviewable scan without

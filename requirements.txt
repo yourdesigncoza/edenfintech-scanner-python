@@ -1,0 +1,3 @@
+# No third-party runtime dependencies — stdlib only.
+# This file exists for environment reproducibility.
+-e .
