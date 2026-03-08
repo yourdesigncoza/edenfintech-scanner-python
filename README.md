@@ -75,5 +75,7 @@ only. It emits sourced qualitative evidence arrays defined in
 `assets/methodology/gemini-raw-bundle.schema.json`, such as research notes,
 catalyst evidence, risk evidence, management/moat/precedent observations, and
 epistemic anchors. Neither command emits scan-input payloads or methodology
-decisions directly. `merge-raw-bundles` combines those retrieval outputs into a
-single importer-ready raw bundle while leaving normalization in `importers.py`.
+decisions directly. `merge-raw-bundles` combines overlapping FMP and Gemini
+tickers into a single combined raw bundle; it still requires
+`screening_inputs`, `analysis_inputs`, and `epistemic_inputs` before
+`build-scan-input` can succeed.

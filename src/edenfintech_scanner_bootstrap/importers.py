@@ -10,6 +10,15 @@ from .pipeline import load_scan_input_template_text, scan_input_template, valida
 
 RAW_CHECK_ORDER = ["solvency", "dilution", "revenue_growth", "roic", "valuation"]
 RAW_PCS_ORDER = ["q1_operational", "q2_regulatory", "q3_precedent", "q4_nonbinary", "q5_macro"]
+RAW_GEMINI_EVIDENCE_ORDER = [
+    "research_notes",
+    "catalyst_evidence",
+    "risk_evidence",
+    "management_observations",
+    "moat_observations",
+    "precedent_observations",
+    "epistemic_anchors",
+]
 
 
 def _require_dict(value: object, label: str) -> dict:
@@ -40,6 +49,116 @@ def _require_bool(value: object, label: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{label} must be a boolean")
     return value
+
+
+def _dedupe_strings(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def _coerce_string_list(value: object, label: str) -> list[str]:
+    return [_require_str(item, f"{label}[]") for item in _require_list(value, label)]
+
+
+def _format_evidence_item(item: dict, label: str) -> str:
+    claim = _require_str(item.get("claim"), f"{label}.claim")
+    source_title = _require_str(item.get("source_title"), f"{label}.source_title")
+    source_url = _require_str(item.get("source_url"), f"{label}.source_url")
+    return f"{claim} ({source_title}: {source_url})"
+
+
+def _import_gemini_context(raw_candidate: dict) -> dict | None:
+    if "gemini_context" not in raw_candidate:
+        return None
+
+    gemini_context = _require_dict(raw_candidate.get("gemini_context"), f"{raw_candidate['ticker']}.gemini_context")
+    prompt_context = _require_dict(
+        gemini_context.get("prompt_context"),
+        f"{raw_candidate['ticker']}.gemini_context.prompt_context",
+    )
+    imported = {
+        "prompt_context": {
+            "model": _require_str(prompt_context.get("model"), f"{raw_candidate['ticker']}.gemini_context.prompt_context.model"),
+            "research_question": _require_str(
+                prompt_context.get("research_question"),
+                f"{raw_candidate['ticker']}.gemini_context.prompt_context.research_question",
+            ),
+            "search_scope": _require_str(
+                prompt_context.get("search_scope"),
+                f"{raw_candidate['ticker']}.gemini_context.prompt_context.search_scope",
+            ),
+        }
+    }
+    for evidence_key in RAW_GEMINI_EVIDENCE_ORDER:
+        raw_items = _require_list(gemini_context.get(evidence_key, []), f"{raw_candidate['ticker']}.gemini_context.{evidence_key}")
+        imported[evidence_key] = [
+            {
+                "claim": _require_str(item.get("claim"), f"{raw_candidate['ticker']}.gemini_context.{evidence_key}[{idx}].claim"),
+                "source_title": _require_str(
+                    item.get("source_title"),
+                    f"{raw_candidate['ticker']}.gemini_context.{evidence_key}[{idx}].source_title",
+                ),
+                "source_url": _require_str(
+                    item.get("source_url"),
+                    f"{raw_candidate['ticker']}.gemini_context.{evidence_key}[{idx}].source_url",
+                ),
+            }
+            for idx, item in enumerate(
+                _require_dict(entry, f"{raw_candidate['ticker']}.gemini_context.{evidence_key}[]")
+                for entry in raw_items
+            )
+        ]
+    return imported
+
+
+def _enrich_analysis_with_gemini(raw_candidate: dict, analysis: dict) -> None:
+    source_research = _import_gemini_context(raw_candidate)
+    if source_research is None:
+        return
+
+    catalyst_items = [_format_evidence_item(item, f"{raw_candidate['ticker']}.gemini_context.catalyst_evidence") for item in source_research["catalyst_evidence"]]
+    risk_items = [_format_evidence_item(item, f"{raw_candidate['ticker']}.gemini_context.risk_evidence") for item in source_research["risk_evidence"]]
+    moat_items = [_format_evidence_item(item, f"{raw_candidate['ticker']}.gemini_context.moat_observations") for item in source_research["moat_observations"]]
+    management_items = [
+        _format_evidence_item(item, f"{raw_candidate['ticker']}.gemini_context.management_observations")
+        for item in source_research["management_observations"]
+    ]
+    precedent_items = [
+        _format_evidence_item(item, f"{raw_candidate['ticker']}.gemini_context.precedent_observations")
+        for item in source_research["precedent_observations"]
+    ]
+    research_items = [_format_evidence_item(item, f"{raw_candidate['ticker']}.gemini_context.research_notes") for item in source_research["research_notes"]]
+    epistemic_items = [
+        _format_evidence_item(item, f"{raw_candidate['ticker']}.gemini_context.epistemic_anchors")
+        for item in source_research["epistemic_anchors"]
+    ]
+
+    if catalyst_items:
+        analysis["catalysts"] = _dedupe_strings(list(analysis.get("catalysts", [])) + catalyst_items)
+    if risk_items:
+        analysis["key_risks"] = _dedupe_strings(list(analysis.get("key_risks", [])) + risk_items)
+    if moat_items:
+        moat_text = " | ".join(moat_items)
+        existing_moat = analysis.get("moat_assessment")
+        analysis["moat_assessment"] = f"{existing_moat} | {moat_text}" if existing_moat else moat_text
+
+    human_flags = _coerce_string_list(analysis.get("human_judgment_flags", []), f"{raw_candidate['ticker']}.analysis_inputs.human_judgment_flags")
+    human_flags.extend(management_items)
+    human_flags.extend(precedent_items)
+    human_flags.extend(epistemic_items)
+    if research_items:
+        human_flags.append(
+            f"Gemini research notes imported ({len(research_items)} items) for {source_research['prompt_context']['research_question']}"
+        )
+    if human_flags:
+        analysis["human_judgment_flags"] = _dedupe_strings(human_flags)
+
+    analysis["source_research"] = source_research
 
 
 def _screening_check(raw_candidate: dict, check_name: str) -> dict:
@@ -163,6 +282,7 @@ def _import_analysis(raw_candidate: dict) -> dict:
         if "reason" in exception_candidate:
             analysis["exception_20_pct_gate"]["reason"] = exception_candidate["reason"]
 
+    _enrich_analysis_with_gemini(raw_candidate, analysis)
     return analysis
 
 

@@ -189,6 +189,47 @@
                 "type": "string"
               }
             },
+            "source_research": {
+              "type": "object",
+              "properties": {
+                "prompt_context": {
+                  "type": "object",
+                  "properties": {
+                    "model": { "type": "string" },
+                    "research_question": { "type": "string" },
+                    "search_scope": { "type": "string" }
+                  }
+                },
+                "research_notes": {
+                  "type": "array",
+                  "items": { "type": "object" }
+                },
+                "catalyst_evidence": {
+                  "type": "array",
+                  "items": { "type": "object" }
+                },
+                "risk_evidence": {
+                  "type": "array",
+                  "items": { "type": "object" }
+                },
+                "management_observations": {
+                  "type": "array",
+                  "items": { "type": "object" }
+                },
+                "moat_observations": {
+                  "type": "array",
+                  "items": { "type": "object" }
+                },
+                "precedent_observations": {
+                  "type": "array",
+                  "items": { "type": "object" }
+                },
+                "epistemic_anchors": {
+                  "type": "array",
+                  "items": { "type": "object" }
+                }
+              }
+            },
             "exception_20_pct_gate": {
               "type": "object",
               "properties": {

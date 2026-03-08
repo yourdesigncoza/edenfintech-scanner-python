@@ -259,7 +259,7 @@ def _analysis_rejection_packet(
         packet["score"] = score
     if epi is not None:
         packet["epistemic_confidence"] = epi
-    for optional_key in ["thesis_summary", "catalysts", "key_risks", "structural_diagnosis", "key_financials"]:
+    for optional_key in ["thesis_summary", "catalysts", "key_risks", "structural_diagnosis", "key_financials", "source_research"]:
         if optional_key in candidate["analysis"]:
             packet[optional_key] = candidate["analysis"][optional_key]
     return packet
@@ -316,7 +316,7 @@ def _ranked_candidate_packet(
             "human_judgment_flags": list(analysis.get("human_judgment_flags", [])),
         },
     }
-    for optional_key in ["thesis_summary", "catalysts", "key_risks", "issues_and_fixes", "moat_assessment"]:
+    for optional_key in ["thesis_summary", "catalysts", "key_risks", "issues_and_fixes", "moat_assessment", "source_research"]:
         if optional_key in analysis:
             packet[optional_key] = analysis[optional_key]
     return packet

@@ -123,6 +123,10 @@ def _validate_gemini_bundle_shape(bundle: dict) -> None:
 
 
 def _extract_response_text(payload: dict) -> str:
+    direct_text = payload.get("text")
+    if isinstance(direct_text, str) and direct_text.strip():
+        return direct_text
+
     candidates = payload.get("candidates")
     if not isinstance(candidates, list) or not candidates:
         raise RuntimeError("Gemini response did not include candidates")
@@ -138,7 +142,7 @@ def _extract_response_text(payload: dict) -> str:
         if text_parts:
             return "".join(text_parts)
 
-    raise RuntimeError("Gemini response did not include a text payload")
+    raise RuntimeError("Gemini response did not include a supported text payload")
 
 
 def _candidate_prompt(ticker: str, research_question: str, search_scope: str) -> str:
@@ -313,14 +317,18 @@ def merge_fmp_and_gemini_bundles(fmp_bundle: dict, gemini_bundle: dict) -> dict:
         merged_candidates.append(merged)
         seen.add(ticker)
 
-    for ticker, candidate in gemini_by_ticker.items():
-        if ticker not in seen:
-            merged_candidates.append(dict(candidate))
+    unmatched_gemini = sorted(ticker for ticker in gemini_by_ticker if ticker not in seen)
+    if unmatched_gemini:
+        raise ValueError(
+            "gemini bundle contains tickers that are missing from the FMP bundle: "
+            + ", ".join(unmatched_gemini)
+        )
 
     methodology_notes = list(dict.fromkeys([
         *list(fmp_bundle.get("methodology_notes", [])),
         *list(gemini_bundle.get("methodology_notes", [])),
         "Merged bundle keeps adapters retrieval-only; importers.py remains the normalization boundary.",
+        "Add screening_inputs, analysis_inputs, and epistemic_inputs before running build-scan-input.",
     ]))
 
     fmp_params = fmp_bundle.get("scan_parameters", {})

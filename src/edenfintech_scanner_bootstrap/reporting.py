@@ -14,6 +14,23 @@ def _pretty_json(value: object) -> str:
     return json.dumps(value, indent=2)
 
 
+def _source_research_summary(source_research: dict) -> str:
+    parts: list[str] = []
+    for key in [
+        "research_notes",
+        "catalyst_evidence",
+        "risk_evidence",
+        "management_observations",
+        "moat_observations",
+        "precedent_observations",
+        "epistemic_anchors",
+    ]:
+        if isinstance(source_research.get(key), list) and source_research[key]:
+            label = key.replace("_", " ")
+            parts.append(f"{label}: {len(source_research[key])}")
+    return ", ".join(parts) if parts else "none"
+
+
 def render_scan_markdown(report: dict, execution_log: dict, judge: dict | None = None) -> str:
     lines = [
         f"# {report['title']}",
@@ -46,6 +63,8 @@ def render_scan_markdown(report: dict, execution_log: dict, judge: dict | None =
                 lines.append(f"- Thesis: {candidate['thesis_summary']}")
             if candidate.get("catalysts"):
                 lines.append(f"- Catalysts: {', '.join(str(item) for item in candidate['catalysts'])}")
+            if candidate.get("source_research"):
+                lines.append(f"- Source research: {_source_research_summary(candidate['source_research'])}")
             lines.append("- Epistemic confidence:")
             lines.append(f"  - adjusted confidence {candidate['epistemic_confidence']['adjusted_confidence']}/5")
             lines.append(f"  - friction note: {candidate['epistemic_confidence']['friction_note']}")
@@ -77,6 +96,8 @@ def render_scan_markdown(report: dict, execution_log: dict, judge: dict | None =
                 lines.append(f"- Downside: {item['worst_case']['downside_pct']}%")
             if item.get("thesis_summary"):
                 lines.append(f"- Thesis: {item['thesis_summary']}")
+            if item.get("source_research"):
+                lines.append(f"- Source research: {_source_research_summary(item['source_research'])}")
     else:
         lines.append("- None")
 
