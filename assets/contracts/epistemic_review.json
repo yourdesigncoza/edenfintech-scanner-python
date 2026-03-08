@@ -1,0 +1,56 @@
+{
+  "stage_id": "epistemic_review",
+  "title": "PCS Epistemic Review Contract",
+  "summary": "Independent confidence review that never sees the analyst's probability or score and returns structured PCS answers plus confidence outputs.",
+  "source_rule_ids": [
+    "pcs_five_questions_required",
+    "pcs_multiplier_and_friction"
+  ],
+  "inputs": {
+    "required": [
+      "ticker",
+      "industry",
+      "thesis_summary",
+      "key_risks",
+      "catalysts",
+      "moat_assessment",
+      "dominant_risk_type"
+    ]
+  },
+  "outputs": {
+    "required": [
+      "q1_operational",
+      "q2_regulatory",
+      "q3_precedent",
+      "q4_nonbinary",
+      "q5_macro",
+      "no_count",
+      "raw_confidence",
+      "adjusted_confidence",
+      "multiplier",
+      "effective_probability",
+      "human_judgment_flags"
+    ]
+  },
+  "enums": {
+    "answer": ["Yes", "No"],
+    "dominant_risk_type": [
+      "Operational/Financial",
+      "Cyclical/Macro",
+      "Regulatory/Political",
+      "Legal/Investigation",
+      "Structural fragility (SPOF)"
+    ]
+  },
+  "hard_checks": [
+    "The reviewer must answer all five PCS questions for every candidate.",
+    "Every answer must include an evidence anchor or NO_EVIDENCE.",
+    "Confidence must be derived from No-count first, then adjusted by deterministic risk-type friction."
+  ],
+  "failure_codes": [
+    "pcs_answer_missing",
+    "pcs_evidence_missing",
+    "risk_type_invalid",
+    "epistemic_payload_invalid"
+  ]
+}

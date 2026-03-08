@@ -1,0 +1,152 @@
+{
+  "version": "0.1.0",
+  "methodology_priority": "If any contract or helper disagrees with strategy-rules.md, strategy-rules.md wins.",
+  "source_files": [
+    "assets/methodology/strategy-rules.md",
+    "assets/methodology/scoring-formulas.md",
+    "assets/methodology/scan-report.schema.json",
+    "assets/methodology/scan-report.template.json"
+  ],
+  "rules": [
+    {
+      "id": "broken_chart_min_60pct",
+      "stage": "screening",
+      "source": "strategy-rules Step 1",
+      "summary": "A stock must be down at least 60% from all-time high before investigation proceeds.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "industry_understandable_required",
+      "stage": "screening",
+      "source": "strategy-rules Step 1",
+      "summary": "A candidate industry must be understandable before analysis proceeds.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "no_secular_decline",
+      "stage": "screening",
+      "source": "strategy-rules Step 1",
+      "summary": "Industries in secular decline are rejected before deeper work.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "double_plus_potential_required",
+      "stage": "screening",
+      "source": "strategy-rules Step 1",
+      "summary": "The stock must have plausible 100%+ upside over 2-3 years to stay alive.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "solvency_fail_rule",
+      "stage": "screening",
+      "source": "strategy-rules Step 2",
+      "summary": "Solvency fails when survival risk exists and price does not clearly compensate for it.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "dilution_fail_rule",
+      "stage": "screening",
+      "source": "strategy-rules Step 2",
+      "summary": "Dilution fails when SBC exceeds 5% without growth or shares are issued to service debt.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "revenue_growth_fail_rule",
+      "stage": "screening",
+      "source": "strategy-rules Step 2",
+      "summary": "Revenue fails when there is no growth and no catalyst to change the path.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "roic_fail_rule",
+      "stage": "screening",
+      "source": "strategy-rules Step 2",
+      "summary": "ROIC fails when returns stay chronically below threshold and the business is worst in peer group.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "valuation_hurdle_fail_rule",
+      "stage": "analysis",
+      "source": "strategy-rules Step 2/5",
+      "summary": "Base-case valuation must clear the 30% CAGR hurdle unless routed to the 20% exception human gate.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "permanent_pass_margin_decline",
+      "stage": "analysis",
+      "source": "strategy-rules Step 3",
+      "summary": "A clear multi-year margin downtrend produces PERMANENT_PASS and blocks advancement.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "weaker_company_retention_guard",
+      "stage": "analysis",
+      "source": "strategy-rules Step 3",
+      "summary": "A weaker company may stay alive only if earlier steps passed, returns are materially higher, and alternatives are limited.",
+      "severity": "audit_required"
+    },
+    {
+      "id": "valid_catalyst_required",
+      "stage": "analysis",
+      "source": "strategy-rules Step 4",
+      "summary": "No valid catalyst means automatic pass on the stock.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "probability_band_normalization",
+      "stage": "analysis",
+      "source": "scoring-formulas Probability Banding",
+      "summary": "Probability must be normalized to 50/60/70/80 bands before scoring and breakpoint checks.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "pcs_five_questions_required",
+      "stage": "epistemic",
+      "source": "scoring-formulas PCS",
+      "summary": "Epistemic review must answer all five PCS questions with evidence anchors.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "pcs_multiplier_and_friction",
+      "stage": "epistemic",
+      "source": "scoring-formulas PCS",
+      "summary": "Confidence derives from No-count mapping first, then deterministic risk-type friction.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "exception_candidate_human_gate",
+      "stage": "assembly",
+      "source": "strategy-rules Step 5",
+      "summary": "20-29.9% CAGR exception candidates stay in pending human review and cannot be auto-approved by the LLM pipeline.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "risk_enrichment_demotion",
+      "stage": "assembly",
+      "source": "strategy-rules Step 5b",
+      "summary": "Enrichment may demote a candidate in the final ranking but scores remain unchanged.",
+      "severity": "audit_required"
+    },
+    {
+      "id": "json_first_report_assembly",
+      "stage": "assembly",
+      "source": "scan-report schema/template",
+      "summary": "Final report assembly is JSON-first and markdown is rendered from the validated object.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "codex_cannot_override_methodology",
+      "stage": "judge",
+      "source": "bootstrap governance",
+      "summary": "Codex can audit methodology compliance but cannot change EdenFinTech rules or waive hard constraints.",
+      "severity": "hard_reject"
+    },
+    {
+      "id": "codex_reroute_to_prior_stage_only",
+      "stage": "judge",
+      "source": "bootstrap governance",
+      "summary": "Codex may reroute only to an earlier named stage and must state the reason code.",
+      "severity": "hard_reject"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "report_type": "scan_report_v1",
+  "title": "EdenFinTech Stock Scan — Exception Candidate Fixture",
+  "date": "2026-03-08",
+  "version": "v1",
+  "scan_parameters": {
+    "universe": "Specific tickers",
+    "focus": "EXC1",
+    "stocks_scanned": 1,
+    "api": "Financial Modeling Prep"
+  },
+  "executive_summary": [
+    "No ranked candidates. One stock is pending human review under the 20% CAGR exception process."
+  ],
+  "ranked_candidates": [],
+  "pending_human_review": [
+    {
+      "ticker": "EXC1",
+      "reason": "Base-case CAGR 24.5% with plausible 6yr+ runway and top-tier CEO. Full analysis completed but automatic approval is disallowed."
+    }
+  ],
+  "portfolio_impact": [
+    "No deployment decision until a human approves or rejects the exception candidate."
+  ],
+  "rejected_at_screening": [],
+  "rejected_at_analysis_detail_packets": [],
+  "current_holding_overlays": [],
+  "methodology_notes": [
+    "Fixture exists to protect the Step 5 human gate in regression tests."
+  ]
+}

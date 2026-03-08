@@ -1,0 +1,50 @@
+{
+  "report_type": "scan_report_v1",
+  "title": "EdenFinTech Stock Scan",
+  "date": "<YYYY-MM-DD>",
+  "version": "<vN>",
+  "scan_parameters": {
+    "universe": "<NYSE | Specific tickers | Sector>",
+    "focus": "<sector or tickers>",
+    "stocks_scanned": 0,
+    "api": "Financial Modeling Prep"
+  },
+  "executive_summary": [
+    "<summary bullet 1>",
+    "<summary bullet 2>"
+  ],
+  "ranked_candidates": [
+    {
+      "_comment": "epistemic_confidence template — include for candidates that reach epistemic review",
+      "epistemic_confidence": {
+        "q1_operational": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
+        "q2_regulatory": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
+        "q3_precedent": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
+        "q4_nonbinary": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
+        "q5_macro": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
+        "no_count": 0,
+        "raw_confidence": 5,
+        "risk_type": "Operational/Financial|Cyclical/Macro|Regulatory/Political|Legal/Investigation|Structural fragility (SPOF)",
+        "risk_type_friction": 0,
+        "friction_note": "...",
+        "adjusted_confidence": 5,
+        "multiplier": 1.0,
+        "effective_probability": 0,
+        "confidence_cap_pct": null,
+        "binary_override": false,
+        "threshold_proximity_warning": null,
+        "human_judgment_flags": []
+      }
+    }
+  ],
+  "pending_human_review": [],
+  "portfolio_impact": [
+    "<portfolio impact bullet>"
+  ],
+  "rejected_at_screening": [],
+  "rejected_at_analysis_detail_packets": [],
+  "current_holding_overlays": [],
+  "methodology_notes": [
+    "<methodology note>"
+  ]
+}

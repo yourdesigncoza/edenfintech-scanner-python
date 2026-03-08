@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EdenFinTech Scan Report",
+  "$defs": {
+    "pcs_check": {
+      "type": "object",
+      "required": ["answer", "justification", "evidence"],
+      "properties": {
+        "answer": { "type": "string", "enum": ["Yes", "No"] },
+        "justification": { "type": "string" },
+        "evidence": { "type": "string" }
+      }
+    },
+    "epistemic_confidence": {
+      "type": "object",
+      "required": [
+        "q1_operational", "q2_regulatory", "q3_precedent",
+        "q4_nonbinary", "q5_macro",
+        "no_count", "raw_confidence",
+        "risk_type", "risk_type_friction",
+        "adjusted_confidence", "multiplier",
+        "effective_probability"
+      ],
+      "properties": {
+        "q1_operational": { "$ref": "#/$defs/pcs_check" },
+        "q2_regulatory": { "$ref": "#/$defs/pcs_check" },
+        "q3_precedent": { "$ref": "#/$defs/pcs_check" },
+        "q4_nonbinary": { "$ref": "#/$defs/pcs_check" },
+        "q5_macro": { "$ref": "#/$defs/pcs_check" },
+        "no_count": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "raw_confidence": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "risk_type": {
+          "type": "string",
+          "enum": [
+            "Operational/Financial",
+            "Cyclical/Macro",
+            "Regulatory/Political",
+            "Legal/Investigation",
+            "Structural fragility (SPOF)"
+          ]
+        },
+        "risk_type_friction": { "type": "integer", "minimum": -2, "maximum": 0 },
+        "friction_note": { "type": "string" },
+        "adjusted_confidence": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "multiplier": { "type": "number" },
+        "effective_probability": { "type": "number" },
+        "confidence_cap_pct": { "type": ["number", "null"] },
+        "binary_override": { "type": "boolean" },
+        "threshold_proximity_warning": { "type": ["string", "null"] },
+        "human_judgment_flags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "required": [
+    "report_type",
+    "title",
+    "date",
+    "version",
+    "scan_parameters",
+    "executive_summary",
+    "ranked_candidates",
+    "portfolio_impact",
+    "rejected_at_screening",
+    "rejected_at_analysis_detail_packets",
+    "current_holding_overlays",
+    "methodology_notes"
+  ],
+  "properties": {
+    "report_type": {
+      "type": "string",
+      "const": "scan_report_v1"
+    },
+    "title": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "scan_parameters": {
+      "type": "object",
+      "required": ["universe", "focus", "stocks_scanned", "api"],
+      "properties": {
+        "universe": { "type": "string" },
+        "focus": { "type": "string" },
+        "stocks_scanned": { "type": "number" },
+        "api": { "type": "string" }
+      }
+    },
+    "executive_summary": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "ranked_candidates": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "pending_human_review": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "portfolio_impact": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "rejected_at_screening": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ticker", "failed_at", "reason"],
+        "properties": {
+          "ticker": { "type": "string" },
+          "failed_at": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "rejected_at_analysis_detail_packets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ticker", "rejection_reason"],
+        "properties": {
+          "ticker": { "type": "string" },
+          "rejection_reason": { "type": "string" }
+        }
+      }
+    },
+    "current_holding_overlays": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ticker",
+          "status_in_scan",
+          "new_capital_decision",
+          "existing_position_action",
+          "reason"
+        ],
+        "properties": {
+          "ticker": { "type": "string" },
+          "status_in_scan": {
+            "type": "string",
+            "enum": ["RANKED", "REJECTED_AT_SCREENING", "REJECTED_AT_ANALYSIS"]
+          },
+          "new_capital_decision": {
+            "type": "string",
+            "enum": ["ADD", "DO_NOT_ADD"]
+          },
+          "existing_position_action": {
+            "type": "string",
+            "enum": ["HOLD", "HOLD_AND_MONITOR", "TRIM", "REDUCE", "EXIT"]
+          },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "methodology_notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "fixtures": [
+    {
+      "id": "specific_tickers_no_survivors_v5",
+      "path": "2026-03-07-cps-aap-dorm-pypl-scan-report-v5.json",
+      "expectations": {
+        "required_categories": [
+          "no_survivors",
+          "screening_rejection",
+          "analysis_rejection",
+          "epistemic_rejection"
+        ],
+        "ranked_candidates_count": 0,
+        "pending_human_review_count": 0,
+        "screening_rejections": ["DORM"],
+        "analysis_rejections": ["CPS", "AAP", "PYPL"]
+      }
+    },
+    {
+      "id": "exception_candidate_pending_human_review",
+      "path": "pending-human-review-exception.json",
+      "expectations": {
+        "required_categories": [
+          "pending_human_review_exception"
+        ],
+        "ranked_candidates_count": 0,
+        "pending_human_review_count": 1,
+        "screening_rejections": [],
+        "analysis_rejections": []
+      }
+    }
+  ]
+}

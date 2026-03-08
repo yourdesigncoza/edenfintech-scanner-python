@@ -1,0 +1,60 @@
+{
+  "stage_id": "cluster_analysis",
+  "title": "Step 3-5 Cluster Analysis Contract",
+  "summary": "Per-cluster analysis that ranks competitors, runs the qualitative deep dive, and produces valuation outputs before epistemic review.",
+  "source_rule_ids": [
+    "permanent_pass_margin_decline",
+    "weaker_company_retention_guard",
+    "valid_catalyst_required",
+    "probability_band_normalization",
+    "valuation_hurdle_fail_rule",
+    "exception_candidate_human_gate"
+  ],
+  "inputs": {
+    "required": [
+      "cluster_name",
+      "tickers",
+      "step2_handoff",
+      "sector_knowledge",
+      "financial_history",
+      "grounded_research"
+    ]
+  },
+  "outputs": {
+    "required": [
+      "cluster_ranking_record",
+      "catalyst_quality_record",
+      "issues_and_fixes",
+      "base_case",
+      "worst_case",
+      "probability_assessment",
+      "analysis_status"
+    ]
+  },
+  "enums": {
+    "survival_quality": ["Strong", "Moderate", "Weak"],
+    "business_quality": ["Strong", "Moderate", "Weak"],
+    "return_quality": ["Strong", "Moderate", "Weak"],
+    "margin_trend_gate": ["PASS", "PERMANENT_PASS"],
+    "final_cluster_status": ["CLEAR_WINNER", "CONDITIONAL_WINNER", "LOWER_PRIORITY", "ELIMINATED"],
+    "catalyst_classification": ["VALID_CATALYST", "SUPPORTING_TAILWIND", "WATCH_ONLY", "INVALID"],
+    "probability_band": ["50%", "60%", "70%", "80%"],
+    "analysis_status": ["ADVANCE_TO_EPISTEMIC", "REJECT_AT_ANALYSIS", "PENDING_HUMAN_REVIEW"]
+  },
+  "hard_checks": [
+    "Any clear 5+ year margin erosion yields PERMANENT_PASS and removes the stock from contention.",
+    "A non-winner can remain alive only if it passed earlier steps, has materially higher return potential, and cluster alternatives are limited.",
+    "No VALID_CATALYST means automatic rejection.",
+    "Base-case CAGR below 30% rejects the stock unless the 20-29.9% exception is routed to pending human review.",
+    "Probability must be normalized to 50/60/70/80 bands before downstream scoring."
+  ],
+  "failure_codes": [
+    "cluster_ranking_incomplete",
+    "non_pure_enum_fields",
+    "no_valid_catalyst",
+    "issues_fixes_missing",
+    "probability_band_invalid",
+    "base_case_hurdle_fail",
+    "analysis_payload_invalid"
+  ]
+}

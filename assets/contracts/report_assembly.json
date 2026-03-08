@@ -1,0 +1,44 @@
+{
+  "stage_id": "report_assembly",
+  "title": "JSON-First Report Assembly Contract",
+  "summary": "Builds the final scan-report JSON object and markdown output from validated upstream payloads without changing qualitative judgments or methodology outcomes.",
+  "source_rule_ids": [
+    "json_first_report_assembly",
+    "exception_candidate_human_gate",
+    "risk_enrichment_demotion"
+  ],
+  "inputs": {
+    "required": [
+      "scan_parameters",
+      "screening_results",
+      "analysis_results",
+      "epistemic_results",
+      "deterministic_score_outputs",
+      "portfolio_context"
+    ]
+  },
+  "outputs": {
+    "required": [
+      "scan_report_json",
+      "scan_report_markdown",
+      "execution_log"
+    ]
+  },
+  "enums": {
+    "status_in_scan": ["RANKED", "REJECTED_AT_SCREENING", "REJECTED_AT_ANALYSIS"],
+    "new_capital_decision": ["ADD", "DO_NOT_ADD"],
+    "existing_position_action": ["HOLD", "HOLD_AND_MONITOR", "TRIM", "REDUCE", "EXIT"]
+  },
+  "hard_checks": [
+    "Pending 20-29.9% CAGR exception candidates must remain out of ranked_candidates unless a human later approves them.",
+    "Risk enrichment may demote ranking order but may not rewrite score math.",
+    "Assembly consumes validated JSON payloads and deterministic calculator outputs only."
+  ],
+  "failure_codes": [
+    "ranked_exception_candidate_present",
+    "analysis_payload_missing",
+    "report_schema_invalid",
+    "markdown_render_failed",
+    "assembly_payload_invalid"
+  ]
+}

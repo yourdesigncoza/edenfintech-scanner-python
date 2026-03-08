@@ -1,0 +1,61 @@
+{
+  "stage_id": "screening",
+  "title": "Step 1-2 Screening Contract",
+  "summary": "Filters a scan universe into analyst-ready survivors while enforcing the Step 1 broken-chart gate and the Step 2 five-check filter.",
+  "source_rule_ids": [
+    "broken_chart_min_60pct",
+    "industry_understandable_required",
+    "no_secular_decline",
+    "double_plus_potential_required",
+    "solvency_fail_rule",
+    "dilution_fail_rule",
+    "revenue_growth_fail_rule",
+    "roic_fail_rule",
+    "valuation_hurdle_fail_rule"
+  ],
+  "inputs": {
+    "required": [
+      "scan_mode",
+      "universe",
+      "excluded_industries",
+      "sector_knowledge_status",
+      "fmp_financial_data"
+    ]
+  },
+  "outputs": {
+    "required": [
+      "survivor_clusters",
+      "step2_records",
+      "rejected_at_screening"
+    ]
+  },
+  "enums": {
+    "scan_mode": ["full_nyse", "sector", "specific_tickers"],
+    "check_verdict": ["PASS", "BORDERLINE_PASS", "FAIL"],
+    "final_outcome": ["PASS_TO_ANALYST", "REJECT_AT_SCREEN"],
+    "borderline_flags": [
+      "solvency_borderline",
+      "dilution_borderline",
+      "growth_borderline",
+      "roic_borderline",
+      "valuation_borderline"
+    ]
+  },
+  "hard_checks": [
+    "Every stock must be at least 60% below all-time high before deeper analysis begins.",
+    "Industries must be understandable and not in secular decline.",
+    "Double-plus potential must exist over 2-3 years before Step 2 proceeds.",
+    "Any FAIL in the five checks produces REJECT_AT_SCREEN."
+  ],
+  "failure_codes": [
+    "broken_chart_fail",
+    "excluded_or_secular_decline",
+    "double_plus_potential_fail",
+    "solvency_fail",
+    "dilution_fail",
+    "revenue_fail",
+    "roic_fail",
+    "valuation_fail",
+    "screening_payload_invalid"
+  ]
+}

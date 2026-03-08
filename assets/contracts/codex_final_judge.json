@@ -1,0 +1,41 @@
+{
+  "stage_id": "codex_final_judge",
+  "title": "Codex Final Judge Contract",
+  "summary": "Final adversarial review over the assembled result that may approve or reroute work to an earlier stage, but cannot change methodology or overrule hard rules.",
+  "source_rule_ids": [
+    "codex_cannot_override_methodology",
+    "codex_reroute_to_prior_stage_only",
+    "exception_candidate_human_gate",
+    "valid_catalyst_required"
+  ],
+  "inputs": {
+    "required": [
+      "assembled_report",
+      "execution_log",
+      "methodology_rulebook",
+      "stage_contracts"
+    ]
+  },
+  "outputs": {
+    "required": [
+      "verdict",
+      "target_stage",
+      "findings",
+      "reroute_reason"
+    ]
+  },
+  "enums": {
+    "verdict": ["APPROVE", "REVISE"],
+    "target_stage": ["screening", "cluster_analysis", "epistemic_review", "report_assembly", "approve"]
+  },
+  "hard_checks": [
+    "Codex may only approve or reroute to a prior stage; it may not invent a new stage or silently waive hard rules.",
+    "Codex may not promote an exception candidate into ranked output.",
+    "Codex may not override a no-catalyst rejection."
+  ],
+  "failure_codes": [
+    "judge_payload_invalid",
+    "judge_target_stage_invalid",
+    "judge_attempted_methodology_override"
+  ]
+}
