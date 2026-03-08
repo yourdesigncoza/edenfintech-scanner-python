@@ -264,6 +264,51 @@ def review_structured_analysis(payload: dict) -> dict:
     }
 
 
+def render_review_structured_analysis_markdown(report: dict) -> str:
+    lines = [
+        "# Structured Analysis Review Checklist",
+        "",
+        f"- Title: {report.get('title', '')}",
+        f"- Scan Date: {report.get('scan_date', '')}",
+        f"- Completion Status: {report.get('completion_status', '')}",
+        f"- Ready For Finalization: {'Yes' if report.get('ready_for_finalization') else 'No'}",
+        "",
+        "## Summary",
+        "",
+        f"- Required Entries: {report.get('summary', {}).get('required_entries', 0)}",
+        f"- MACHINE_DRAFT: {report.get('summary', {}).get('machine_draft', 0)}",
+        f"- HUMAN_CONFIRMED: {report.get('summary', {}).get('human_confirmed', 0)}",
+        f"- HUMAN_EDITED: {report.get('summary', {}).get('human_edited', 0)}",
+        f"- Missing Review Notes: {report.get('summary', {}).get('missing_review_notes', 0)}",
+        f"- Missing Provenance: {report.get('summary', {}).get('missing_provenance', 0)}",
+        "",
+    ]
+
+    for candidate in report.get("candidates", []):
+        lines.extend(
+            [
+                f"## {candidate.get('ticker', 'Unknown Ticker')}",
+                "",
+                f"- Ready For Finalization: {'Yes' if candidate.get('ready_for_finalization') else 'No'}",
+                f"- Required Entries: {candidate.get('counts', {}).get('required_entries', 0)}",
+                f"- MACHINE_DRAFT: {candidate.get('counts', {}).get('machine_draft', 0)}",
+                f"- HUMAN_CONFIRMED: {candidate.get('counts', {}).get('human_confirmed', 0)}",
+                f"- HUMAN_EDITED: {candidate.get('counts', {}).get('human_edited', 0)}",
+                f"- Missing Review Notes: {candidate.get('counts', {}).get('missing_review_notes', 0)}",
+                f"- Missing Provenance: {candidate.get('counts', {}).get('missing_provenance', 0)}",
+                "",
+                "### Required Provenance Entries",
+                "",
+            ]
+        )
+        for entry in candidate.get("entries", []):
+            needs_note = "missing review_note" if entry.get("needs_review_note") else "review_note present"
+            lines.append(f"- `{entry.get('field_path', '')}`: {entry.get('status', '')} ({needs_note})")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def apply_review_note_updates(payload: dict, updates: list[dict[str, str]]) -> dict:
     validate_structured_analysis(payload)
     if not updates:
@@ -627,6 +672,7 @@ def review_structured_analysis_file(
     structured_analysis_path: Path,
     *,
     json_out: Path | None = None,
+    markdown_out: Path | None = None,
     overlay_out: Path | None = None,
     note_updates: list[dict[str, str]] | None = None,
 ) -> dict:
@@ -642,4 +688,7 @@ def review_structured_analysis_file(
     if json_out is not None:
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(report, indent=2))
+    if markdown_out is not None:
+        markdown_out.parent.mkdir(parents=True, exist_ok=True)
+        markdown_out.write_text(render_review_structured_analysis_markdown(report), encoding="utf-8")
     return report

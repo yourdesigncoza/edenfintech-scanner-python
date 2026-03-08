@@ -8,6 +8,7 @@ from pathlib import Path
 from edenfintech_scanner_bootstrap.assets import load_json
 from edenfintech_scanner_bootstrap.structured_analysis import (
     apply_review_note_updates,
+    render_review_structured_analysis_markdown,
     review_structured_analysis,
     review_structured_analysis_file,
 )
@@ -56,12 +57,14 @@ class ReviewHelperTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             overlay_path = Path(tmpdir) / "overlay.json"
             report_path = Path(tmpdir) / "review-report.json"
+            markdown_path = Path(tmpdir) / "review-report.md"
             updated_overlay_path = Path(tmpdir) / "overlay-reviewed.json"
             overlay_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
             report = review_structured_analysis_file(
                 overlay_path,
                 json_out=report_path,
+                markdown_out=markdown_path,
                 overlay_out=updated_overlay_path,
                 note_updates=[
                     {
@@ -72,8 +75,14 @@ class ReviewHelperTest(unittest.TestCase):
             )
 
             self.assertTrue(report_path.exists())
+            self.assertTrue(markdown_path.exists())
             self.assertTrue(updated_overlay_path.exists())
             self.assertEqual(report["summary"]["missing_review_notes"], 25)
+            markdown = markdown_path.read_text(encoding="utf-8")
+            self.assertIn("# Structured Analysis Review Checklist", markdown)
+            self.assertIn("## RAW1", markdown)
+            self.assertIn("### Required Provenance Entries", markdown)
+            self.assertIn("`screening_inputs.solvency`", markdown)
 
     def test_review_structured_analysis_file_requires_overlay_out_for_note_updates(self) -> None:
         payload = load_json(DRAFT_FIXTURE_PATH)
@@ -91,6 +100,18 @@ class ReviewHelperTest(unittest.TestCase):
                         }
                     ],
                 )
+
+    def test_render_review_structured_analysis_markdown_contains_checklist_sections(self) -> None:
+        payload = load_json(DRAFT_FIXTURE_PATH)
+        report = review_structured_analysis(payload)
+
+        markdown = render_review_structured_analysis_markdown(report)
+
+        self.assertIn("# Structured Analysis Review Checklist", markdown)
+        self.assertIn("## Summary", markdown)
+        self.assertIn("## RAW1", markdown)
+        self.assertIn("MACHINE_DRAFT", markdown)
+        self.assertIn("missing review_note", markdown)
 
 
 if __name__ == "__main__":

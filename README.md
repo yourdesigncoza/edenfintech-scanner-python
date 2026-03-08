@@ -33,7 +33,7 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-gemini-bundle R
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli merge-raw-bundles fmp-raw.json gemini-raw.json --json-out merged-raw.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-structured-analysis-template merged-raw.json --json-out structured-analysis.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli generate-structured-analysis-draft merged-raw.json --json-out structured-analysis-draft.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli review-structured-analysis structured-analysis-reviewed.json --json-out review-checklist.json --overlay-out structured-analysis-reviewed-notes.json --set-note screening_inputs.solvency="Reviewer checked solvency against cash generation history."
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli review-structured-analysis structured-analysis-reviewed.json --json-out review-checklist.json --markdown-out review-checklist.md --overlay-out structured-analysis-reviewed-notes.json --set-note screening_inputs.solvency="Reviewer checked solvency against cash generation history."
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli finalize-structured-analysis structured-analysis-reviewed.json --reviewer "Analyst Name" --json-out structured-analysis-finalized.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-scan-input raw-input.json --json-out input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
@@ -106,7 +106,9 @@ draft cannot be rubber-stamped into a finalized overlay.
 a checklist of required provenance entries, surfaces which ones are still
 `MACHINE_DRAFT`, `HUMAN_CONFIRMED`, or `HUMAN_EDITED`, and can write targeted
 `review_note` updates into a new overlay file. It does not change field values,
-provenance statuses, or completion state.
+provenance statuses, or completion state. JSON remains the source of truth, and
+`--markdown-out` is only a rendered review artifact from the same checklist
+report object.
 
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the

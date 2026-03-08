@@ -162,6 +162,7 @@ def _parse_review_note_update(spec: str) -> dict[str, str]:
 def _cmd_review_structured_analysis(
     structured_analysis_path: str,
     json_out: str | None,
+    markdown_out: str | None,
     overlay_out: str | None,
     set_note: list[str] | None,
 ) -> int:
@@ -171,6 +172,7 @@ def _cmd_review_structured_analysis(
     report = review_structured_analysis_file(
         Path(structured_analysis_path),
         json_out=Path(json_out) if json_out else None,
+        markdown_out=Path(markdown_out) if markdown_out else None,
         overlay_out=Path(overlay_out) if overlay_out else None,
         note_updates=updates,
     )
@@ -296,6 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
     review_structured_analysis = subparsers.add_parser("review-structured-analysis")
     review_structured_analysis.add_argument("structured_analysis_path")
     review_structured_analysis.add_argument("--json-out")
+    review_structured_analysis.add_argument("--markdown-out")
     review_structured_analysis.add_argument("--overlay-out")
     review_structured_analysis.add_argument(
         "--set-note",
@@ -377,6 +380,7 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_review_structured_analysis(
             args.structured_analysis_path,
             args.json_out,
+            args.markdown_out,
             args.overlay_out,
             args.set_note,
         )
