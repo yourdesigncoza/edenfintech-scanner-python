@@ -14,6 +14,7 @@ from .importers import build_scan_input_file, load_raw_scan_template_text
 from .judge import run_judge_file
 from .live_scan import run_live_scan
 from .pipeline import load_scan_input_template_text, run_scan_file, validate_scan_input_file
+from .review_package import build_review_package
 from .regression import run_regression_suite
 from .structured_analysis import (
     build_structured_analysis_template_file,
@@ -276,6 +277,37 @@ def _cmd_run_live_scan(
     return 0
 
 
+def _cmd_build_review_package(
+    tickers: list[str],
+    out_dir: str,
+    structured_analysis_path: str | None,
+    focus: str | None,
+    research_question: str | None,
+    gemini_model: str | None,
+) -> int:
+    config = load_config()
+    result = build_review_package(
+        tickers,
+        out_dir=Path(out_dir),
+        structured_analysis_path=Path(structured_analysis_path) if structured_analysis_path else None,
+        config=config,
+        focus=focus,
+        research_question=research_question,
+        gemini_model=gemini_model or "gemini-3-pro-preview",
+    )
+    print(
+        json.dumps(
+            {
+                "out_dir": str(result.out_dir),
+                "stop_at": result.live_scan_result.stop_at,
+                "written_paths": {key: str(path) for key, path in result.written_paths.items()},
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate EdenFinTech Python bootstrap assets")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -366,6 +398,14 @@ def build_parser() -> argparse.ArgumentParser:
     run_live_scan.add_argument("--research-question")
     run_live_scan.add_argument("--gemini-model")
 
+    build_review_package_parser = subparsers.add_parser("build-review-package")
+    build_review_package_parser.add_argument("tickers", nargs="+")
+    build_review_package_parser.add_argument("--out-dir", required=True)
+    build_review_package_parser.add_argument("--structured-analysis-path")
+    build_review_package_parser.add_argument("--focus")
+    build_review_package_parser.add_argument("--research-question")
+    build_review_package_parser.add_argument("--gemini-model")
+
     subparsers.add_parser("show-scan-template")
     subparsers.add_parser("show-raw-scan-template")
     subparsers.add_parser("show-scan-schema")
@@ -439,6 +479,15 @@ def main(argv: list[str] | None = None) -> int:
             args.tickers,
             args.out_dir,
             args.stop_at,
+            args.structured_analysis_path,
+            args.focus,
+            args.research_question,
+            args.gemini_model,
+        )
+    if args.command == "build-review-package":
+        return _cmd_build_review_package(
+            args.tickers,
+            args.out_dir,
             args.structured_analysis_path,
             args.focus,
             args.research_question,
