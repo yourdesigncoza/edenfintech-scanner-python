@@ -145,6 +145,48 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual(result["target_stage"], "report_assembly")
         self.assertEqual(result["reroute_reason"], "judge_payload_invalid")
 
+    def test_codex_judge_request_payload_uses_strict_closed_schema(self) -> None:
+        config = AppConfig(
+            fmp_api_key=None,
+            gemini_api_key=None,
+            openai_api_key="test-key",
+            codex_judge_model="gpt-5-codex",
+        )
+        captured: dict = {}
+
+        def transport(payload, app_config):
+            captured["payload"] = payload
+            return {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "{\"verdict\": \"APPROVE\", \"target_stage\": \"approve\", \"findings\": [], \"reroute_reason\": \"\"}",
+                            }
+                        ],
+                    }
+                ]
+            }
+
+        result = codex_judge(
+            {
+                "ranked_candidates": [],
+                "pending_human_review": [],
+                "rejected_at_analysis_detail_packets": [],
+                "current_holding_overlays": [],
+            },
+            {"entries": [], "candidate_count": 0, "survivor_count": 0},
+            config=config,
+            transport=transport,
+        )
+
+        schema = captured["payload"]["text"]["format"]["schema"]
+        self.assertTrue(captured["payload"]["text"]["format"]["strict"])
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(result["verdict"], "APPROVE")
+
     def test_raw_bundle_to_scan_to_judge_contract(self) -> None:
         raw_input_path = FIXTURES_ROOT / "ranked_candidate_bundle.json"
         scan_input = build_scan_input_file(raw_input_path)

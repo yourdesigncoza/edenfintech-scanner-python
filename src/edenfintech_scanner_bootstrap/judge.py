@@ -174,6 +174,12 @@ def openai_judge_transport(request_payload: dict, config: AppConfig) -> dict:
     try:
         with request.urlopen(http_request, timeout=60) as response:
             return json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        body_preview = body.strip().replace("\n", " ")
+        if len(body_preview) > 400:
+            body_preview = f"{body_preview[:400]}..."
+        raise RuntimeError(f"OpenAI judge request failed: HTTP {exc.code}: {body_preview}") from exc
     except error.URLError as exc:
         raise RuntimeError(f"OpenAI judge request failed: {exc}") from exc
 
@@ -198,6 +204,7 @@ def codex_judge(
                 "name": "codex_final_judge",
                 "schema": {
                     "type": "object",
+                    "additionalProperties": False,
                     "required": ["verdict", "target_stage", "findings", "reroute_reason"],
                     "properties": {
                         "verdict": {"type": "string", "enum": ["APPROVE", "REVISE"]},
@@ -209,6 +216,7 @@ def codex_judge(
                         "reroute_reason": {"type": "string"},
                     },
                 },
+                "strict": True,
             }
         },
     }
