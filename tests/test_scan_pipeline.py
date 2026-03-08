@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import json
 import unittest
 from pathlib import Path
 
@@ -232,6 +233,81 @@ class ScanPipelineTest(unittest.TestCase):
         self.assertEqual(artifacts.report_json["current_holding_overlays"][0]["ticker"], "RANK")
         self.assertEqual(artifacts.report_json["current_holding_overlays"][0]["status_in_scan"], "RANKED")
 
+    def test_current_holding_overlays_cover_pending_and_out_of_scope(self) -> None:
+        payload = _base_payload()
+        payload["portfolio_context"]["current_holdings"] = [
+            {
+                "ticker": "EXC",
+                "current_weight_pct": 3.0,
+                "existing_position_action": "HOLD_AND_MONITOR",
+                "note": "Exception candidate currently held.",
+            },
+            {
+                "ticker": "OUT",
+                "current_weight_pct": 2.0,
+                "existing_position_action": "HOLD",
+                "note": "Not part of this scan.",
+            },
+        ]
+        payload["candidates"] = [
+            {
+                "ticker": "EXC",
+                "cluster_name": "exception-cluster",
+                "industry": "Credit Services",
+                "current_price": 52.0,
+                "screening": {
+                    "pct_off_ath": 68.0,
+                    "industry_understandable": True,
+                    "industry_in_secular_decline": False,
+                    "double_plus_potential": True,
+                    "checks": {
+                        "solvency": {"verdict": "PASS", "note": "Adequate balance sheet."},
+                        "dilution": {"verdict": "PASS", "note": "Share count stable."},
+                        "revenue_growth": {"verdict": "PASS", "note": "Growth reaccelerating."},
+                        "roic": {"verdict": "PASS", "note": "Returns normalizing."},
+                        "valuation": {"verdict": "PASS", "note": "Preliminary hurdle clears."},
+                    },
+                },
+                "analysis": {
+                    "margin_trend_gate": "PASS",
+                    "final_cluster_status": "CONDITIONAL_WINNER",
+                    "catalyst_classification": "VALID_CATALYST",
+                    "dominant_risk_type": "Operational/Financial",
+                    "base_case": {
+                        "revenue_b": 6.0,
+                        "fcf_margin_pct": 7.0,
+                        "multiple": 15.0,
+                        "shares_m": 70.0,
+                        "years": 3.0,
+                    },
+                    "worst_case": {
+                        "revenue_b": 5.4,
+                        "fcf_margin_pct": 5.0,
+                        "multiple": 10.0,
+                        "shares_m": 70.0,
+                    },
+                    "probability": {"base_probability_pct": 64.0},
+                    "exception_20_pct_gate": {
+                        "eligible": True,
+                        "reason": "Human approval required.",
+                    },
+                },
+                "epistemic_review": {
+                    "q1_operational": {"answer": "Yes", "justification": "Modelable execution risk.", "evidence": "Operating plan."},
+                    "q2_regulatory": {"answer": "Yes", "justification": "Stable regulatory setup.", "evidence": "Routine oversight."},
+                    "q3_precedent": {"answer": "Yes", "justification": "Comparable recoveries exist.", "evidence": "Historical peers."},
+                    "q4_nonbinary": {"answer": "Yes", "justification": "Several recovery paths exist.", "evidence": "Margin levers."},
+                    "q5_macro": {"answer": "Yes", "justification": "Macro is secondary.", "evidence": "Domestic exposure."},
+                },
+            }
+        ]
+
+        artifacts = run_scan(payload)
+
+        overlays = {item["ticker"]: item for item in artifacts.report_json["current_holding_overlays"]}
+        self.assertEqual(overlays["EXC"]["status_in_scan"], "PENDING_HUMAN_REVIEW")
+        self.assertEqual(overlays["OUT"]["status_in_scan"], "NOT_IN_SCAN_SCOPE")
+
     def test_run_scan_file_writes_execution_log_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             input_path = Path(tmpdir) / "input.json"
@@ -302,7 +378,8 @@ class ScanPipelineTest(unittest.TestCase):
             self.assertTrue(report_path.exists())
             self.assertTrue(markdown_path.exists())
             self.assertTrue(execution_log_path.exists())
-            self.assertIn("execution_log", artifacts.report_json)
+            self.assertNotIn("execution_log", artifacts.report_json)
+            self.assertNotIn("execution_log", json.loads(report_path.read_text()))
             self.assertIn("Stage Events", execution_log_path.read_text())
 
 

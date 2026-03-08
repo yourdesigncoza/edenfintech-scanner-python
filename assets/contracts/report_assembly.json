@@ -25,7 +25,7 @@
     ]
   },
   "enums": {
-    "status_in_scan": ["RANKED", "REJECTED_AT_SCREENING", "REJECTED_AT_ANALYSIS"],
+    "status_in_scan": ["RANKED", "PENDING_HUMAN_REVIEW", "REJECTED_AT_SCREENING", "REJECTED_AT_ANALYSIS", "NOT_IN_SCAN_SCOPE"],
     "new_capital_decision": ["ADD", "DO_NOT_ADD"],
     "existing_position_action": ["HOLD", "HOLD_AND_MONITOR", "TRIM", "REDUCE", "EXIT"]
   },

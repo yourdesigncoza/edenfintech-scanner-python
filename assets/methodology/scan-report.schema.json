@@ -147,7 +147,7 @@
           "ticker": { "type": "string" },
           "status_in_scan": {
             "type": "string",
-            "enum": ["RANKED", "REJECTED_AT_SCREENING", "REJECTED_AT_ANALYSIS"]
+            "enum": ["RANKED", "PENDING_HUMAN_REVIEW", "REJECTED_AT_SCREENING", "REJECTED_AT_ANALYSIS", "NOT_IN_SCAN_SCOPE"]
           },
           "new_capital_decision": {
             "type": "string",

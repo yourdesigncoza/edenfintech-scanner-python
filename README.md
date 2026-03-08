@@ -11,7 +11,7 @@ markdown summaries without changing the underlying methodology.
 - Machine-readable stage contracts for scan orchestration
 - Canonical rulebook aligned to `strategy-rules.md`
 - Regression fixtures copied from existing scan artifacts
-- A deterministic Python pipeline for screening, analysis, epistemic review, report assembly, and execution-log generation
+- A deterministic Python pipeline for screening, analysis, epistemic review, report assembly, execution-log generation, and config-gated judge review
 - A CLI for validating assets, importing raw research bundles, and executing scans from JSON input
 
 ## Commands
@@ -26,6 +26,7 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-schema
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-scan-input raw-input.json --json-out input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-scan input.json --json-out report.json --markdown-out report.md --execution-log-out execution-log.md
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-judge report.json execution-log.md
 ```
 
 ## Layout
@@ -58,3 +59,7 @@ and `build-scan-input`, which maps a simpler research bundle into the validated
 scan-input contract. Future importer code can read API keys from `.env`; see
 `.env.example` for the expected variables. If a helper or contract ever
 disagrees with the vendored `strategy-rules.md`, the methodology file wins.
+
+The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
+the pipeline falls back to a deterministic local judge that stays within the
+existing `codex_final_judge` contract.

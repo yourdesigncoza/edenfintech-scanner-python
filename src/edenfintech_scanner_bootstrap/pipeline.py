@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from .assets import load_json, load_text, methodology_root, scan_input_schema_path, scan_report_schema_path
+from .judge import codex_judge
 from .reporting import render_scan_markdown, write_execution_log
 from .scoring import (
     EpistemicOutcome,
@@ -363,6 +364,7 @@ def validate_scan_report(report: dict) -> None:
 def _build_current_holding_overlays(
     portfolio_context: dict,
     ranked_candidates: list[dict],
+    pending_human_review: list[dict],
     rejected_screening: list[dict],
     rejected_analysis: list[dict],
 ) -> list[dict]:
@@ -371,6 +373,7 @@ def _build_current_holding_overlays(
         return []
 
     ranked_by_ticker = {item["ticker"]: item for item in ranked_candidates}
+    pending_by_ticker = {item["ticker"]: item for item in pending_human_review}
     screen_reject_by_ticker = {item["ticker"]: item for item in rejected_screening}
     analysis_reject_by_ticker = {item["ticker"]: item for item in rejected_analysis}
     overlays: list[dict] = []
@@ -412,6 +415,21 @@ def _build_current_holding_overlays(
             )
             continue
 
+        if ticker in pending_by_ticker:
+            reason = f"{weight_prefix} Pending human review: {pending_by_ticker[ticker]['reason']}"
+            if note:
+                reason = f"{reason} {note}"
+            overlays.append(
+                {
+                    "ticker": ticker,
+                    "status_in_scan": "PENDING_HUMAN_REVIEW",
+                    "new_capital_decision": "DO_NOT_ADD",
+                    "existing_position_action": item.get("existing_position_action", "HOLD_AND_MONITOR"),
+                    "reason": reason,
+                }
+            )
+            continue
+
         if ticker in screen_reject_by_ticker:
             reason = f"{weight_prefix} Rejected at screening: {screen_reject_by_ticker[ticker]['reason']}"
             if note:
@@ -425,35 +443,22 @@ def _build_current_holding_overlays(
                     "reason": reason,
                 }
             )
+            continue
+
+        reason = f"{weight_prefix} This holding was not part of the current scan scope, so the scan made no new methodology conclusion about it."
+        if note:
+            reason = f"{reason} {note}"
+        overlays.append(
+            {
+                "ticker": ticker,
+                "status_in_scan": "NOT_IN_SCAN_SCOPE",
+                "new_capital_decision": "DO_NOT_ADD",
+                "existing_position_action": item.get("existing_position_action", "HOLD"),
+                "reason": reason,
+            }
+        )
 
     return overlays
-
-
-def _final_judge(report: dict, execution_log: dict) -> dict:
-    findings: list[str] = []
-    target_stage = "approve"
-    verdict = "APPROVE"
-    reroute_reason = ""
-
-    ranked_tickers = {item["ticker"] for item in report["ranked_candidates"]}
-    for item in report.get("pending_human_review", []):
-        if item["ticker"] in ranked_tickers:
-            verdict = "REVISE"
-            target_stage = "report_assembly"
-            reroute_reason = "ranked_exception_candidate_present"
-            findings.append(f"{item['ticker']} appears in pending human review and ranked output.")
-
-    for packet in report["rejected_at_analysis_detail_packets"]:
-        if "epistemic_confidence" in packet and packet["epistemic_confidence"]["effective_probability"] >= 60:
-            findings.append(f"{packet['ticker']} rejected after epistemic review despite effective probability >= 60; verify rejection basis.")
-
-    return {
-        "verdict": verdict,
-        "target_stage": target_stage,
-        "findings": findings,
-        "reroute_reason": reroute_reason,
-        "execution_log": execution_log,
-    }
 
 
 def run_scan(payload: dict) -> ScanArtifacts:
@@ -677,6 +682,7 @@ def run_scan(payload: dict) -> ScanArtifacts:
     current_holding_overlays = _build_current_holding_overlays(
         portfolio_context,
         ranked_candidates,
+        pending_human_review,
         rejected_screening,
         rejected_analysis,
     )
@@ -716,9 +722,9 @@ def run_scan(payload: dict) -> ScanArtifacts:
         "candidate_count": len(payload["candidates"]),
         "survivor_count": len(ranked_candidates),
     }
-    judge = _final_judge(template, execution_log)
-    markdown = render_scan_markdown(template, execution_log, judge)
     validate_scan_report(template)
+    judge = codex_judge(template, execution_log)
+    markdown = render_scan_markdown(template, execution_log, judge)
     return ScanArtifacts(report_json=template, report_markdown=markdown, execution_log=execution_log, judge=judge)
 
 
@@ -730,12 +736,6 @@ def run_scan_file(
 ) -> ScanArtifacts:
     payload = load_json(input_path)
     artifacts = run_scan(payload)
-
-    if execution_log_out is not None:
-        artifacts.report_json["execution_log"] = {
-            "requested": True,
-            "path": str(execution_log_out),
-        }
 
     if json_out is not None:
         json_out.parent.mkdir(parents=True, exist_ok=True)
