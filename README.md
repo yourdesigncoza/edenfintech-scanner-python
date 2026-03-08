@@ -13,6 +13,7 @@ markdown summaries without changing the underlying methodology.
 - Regression fixtures copied from existing scan artifacts
 - A deterministic Python pipeline for screening, analysis, epistemic review, report assembly, execution-log generation, and config-gated judge review
 - A CLI for validating assets, fetching FMP and Gemini raw bundles, generating structured-analysis overlays, merging/importing bundles, and executing scans from JSON input
+- A machine-draft field-generation layer that emits auditable structured-analysis drafts with provenance from merged raw evidence
 
 ## Commands
 
@@ -29,6 +30,7 @@ PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-fmp-bundle RAW1
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-gemini-bundle RAW1 RAW2 --focus "payments software" --json-out gemini-raw.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli merge-raw-bundles fmp-raw.json gemini-raw.json --json-out merged-raw.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-structured-analysis-template merged-raw.json --json-out structured-analysis.json
+PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli generate-structured-analysis-draft merged-raw.json --json-out structured-analysis-draft.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-scan-input raw-input.json --json-out input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
 PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-scan input.json --json-out report.json --markdown-out report.md --execution-log-out execution-log.md
@@ -78,6 +80,12 @@ generated template is intentionally non-executable: it contains
 `__REQUIRED__` markers, starts as `completion_status: DRAFT`, and is bound to
 the raw bundle fingerprint it was generated from.
 
+`generate-structured-analysis-draft` produces a schema-valid machine draft from
+the same merged raw bundle. It still keeps `completion_status: DRAFT`, adds
+`generation_metadata`, and records `field_provenance` with
+`status: MACHINE_DRAFT` per generated field so human review can see what was
+inferred from which raw evidence.
+
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the
 existing `codex_final_judge` contract.
@@ -97,3 +105,5 @@ flow and writes all intermediate artifacts into one directory, but by default it
 stops at `raw-bundle` and writes a structured-analysis template so the current
 boundary stays explicit. If you later apply a structured overlay, its
 `source_bundle` fingerprint must match the freshly fetched raw bundle.
+`run-live-scan` now also writes `structured-analysis-draft.json` beside the
+manual template so the machine-draft path is visible without bypassing review.

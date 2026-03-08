@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .assets import contract_path, gemini_raw_bundle_schema_path, load_json, scan_input_schema_path, structured_analysis_schema_path
 from .config import load_config
+from .field_generation import build_structured_analysis_draft_file
 from .fmp import build_fmp_bundle_with_config, write_fmp_bundle
 from .gemini import build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
 from .importers import build_scan_input_file, load_raw_scan_template_text
@@ -105,6 +106,15 @@ def _cmd_show_raw_scan_template() -> int:
 
 def _cmd_build_structured_analysis_template(raw_bundle_path: str, json_out: str | None) -> int:
     payload = build_structured_analysis_template_file(
+        Path(raw_bundle_path),
+        json_out=Path(json_out) if json_out else None,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_generate_structured_analysis_draft(raw_bundle_path: str, json_out: str | None) -> int:
+    payload = build_structured_analysis_draft_file(
         Path(raw_bundle_path),
         json_out=Path(json_out) if json_out else None,
     )
@@ -223,6 +233,10 @@ def build_parser() -> argparse.ArgumentParser:
     build_structured_analysis_template.add_argument("raw_bundle_path")
     build_structured_analysis_template.add_argument("--json-out")
 
+    generate_structured_analysis_draft = subparsers.add_parser("generate-structured-analysis-draft")
+    generate_structured_analysis_draft.add_argument("raw_bundle_path")
+    generate_structured_analysis_draft.add_argument("--json-out")
+
     run_judge = subparsers.add_parser("run-judge")
     run_judge.add_argument("report_path")
     run_judge.add_argument("execution_log_path")
@@ -280,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_build_scan_input(args.raw_input_path, args.json_out)
     if args.command == "build-structured-analysis-template":
         return _cmd_build_structured_analysis_template(args.raw_bundle_path, args.json_out)
+    if args.command == "generate-structured-analysis-draft":
+        return _cmd_generate_structured_analysis_draft(args.raw_bundle_path, args.json_out)
     if args.command == "show-raw-scan-template":
         return _cmd_show_raw_scan_template()
     if args.command == "run-judge":

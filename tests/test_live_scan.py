@@ -127,6 +127,7 @@ class LiveScanTest(unittest.TestCase):
             self.assertEqual(result.stop_at, "raw-bundle")
             self.assertIn("merged_raw", result.written_paths)
             self.assertIn("structured_analysis_template", result.written_paths)
+            self.assertIn("structured_analysis_draft", result.written_paths)
             self.assertNotIn("scan_input", result.written_paths)
 
     def test_run_live_scan_can_produce_report_with_finalized_structured_overlay(self) -> None:

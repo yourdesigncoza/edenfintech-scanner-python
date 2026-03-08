@@ -57,6 +57,9 @@
     "completion_note": {
       "type": "string"
     },
+    "generation_metadata": {
+      "$ref": "#/definitions/generation_metadata"
+    },
     "methodology_notes": {
       "type": "array",
       "items": {
@@ -226,6 +229,58 @@
         "raw_bundle_fingerprint": { "type": "string", "minLength": 1 }
       }
     },
+    "field_provenance": {
+      "type": "object",
+      "required": [
+        "field_path",
+        "status",
+        "rationale",
+        "evidence_refs"
+      ],
+      "properties": {
+        "field_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["MACHINE_DRAFT", "HUMAN_EDITED", "HUMAN_CONFIRMED"]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "path", "summary"],
+            "properties": {
+              "kind": { "type": "string", "minLength": 1 },
+              "path": { "type": "string", "minLength": 1 },
+              "summary": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "generation_metadata": {
+      "type": "object",
+      "required": [
+        "source",
+        "generator_version",
+        "raw_bundle_fingerprint"
+      ],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "generator_version": { "type": "string", "minLength": 1 },
+        "raw_bundle_fingerprint": { "type": "string", "minLength": 1 },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
     "structured_candidate": {
       "type": "object",
       "required": [
@@ -245,6 +300,12 @@
         "evidence_fingerprint": {
           "type": "string",
           "minLength": 1
+        },
+        "field_provenance": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/field_provenance"
+          }
         },
         "screening_inputs": {
           "type": "object",

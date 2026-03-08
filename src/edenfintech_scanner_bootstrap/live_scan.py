@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import AppConfig, load_config
+from .field_generation import generate_structured_analysis_draft
 from .fmp import FmpTransport, build_fmp_bundle_with_config, write_fmp_bundle
 from .gemini import DEFAULT_GEMINI_MODEL, GeminiTransport, build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles
 from .importers import build_scan_input
@@ -77,6 +78,10 @@ def run_live_scan(
     structured_template_path = out_dir / "structured-analysis-template.json"
     _write_json(structured_template_path, structured_template)
     written_paths["structured_analysis_template"] = structured_template_path
+    structured_draft = generate_structured_analysis_draft(merged_bundle)
+    structured_draft_path = out_dir / "structured-analysis-draft.json"
+    _write_json(structured_draft_path, structured_draft)
+    written_paths["structured_analysis_draft"] = structured_draft_path
 
     if stop_at == "raw-bundle":
         return LiveScanResult(stop_at=stop_at, out_dir=out_dir, written_paths=written_paths)
