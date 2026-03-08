@@ -114,6 +114,17 @@ def _template_field_provenance(evidence_context: dict) -> list[dict]:
     ]
 
 
+def _provenance_by_path(candidate: dict) -> dict[str, dict]:
+    provenance = candidate.get("field_provenance")
+    if not isinstance(provenance, list):
+        return {}
+    entries: dict[str, dict] = {}
+    for item in provenance:
+        if isinstance(item, dict) and isinstance(item.get("field_path"), str):
+            entries[item["field_path"]] = item
+    return entries
+
+
 def _validate_provenance_coverage(
     candidate: dict,
     *,
@@ -158,6 +169,137 @@ def validate_structured_analysis(payload: dict) -> None:
         validate_instance(payload, _load_schema())
     except SchemaValidationError as exc:
         raise ValueError(f"structured analysis schema validation failed: {exc}") from exc
+
+
+def review_structured_analysis(payload: dict) -> dict:
+    validate_structured_analysis(payload)
+    structured_candidates = payload.get("structured_candidates")
+    if not isinstance(structured_candidates, list) or not structured_candidates:
+        raise ValueError("structured_payload.structured_candidates must be a non-empty list")
+
+    candidate_reports: list[dict] = []
+    total_counts = {
+        "required_entries": 0,
+        "machine_draft": 0,
+        "human_confirmed": 0,
+        "human_edited": 0,
+        "missing_review_notes": 0,
+        "missing_provenance": 0,
+    }
+    ready_for_finalization = True
+
+    for candidate in structured_candidates:
+        if not isinstance(candidate, dict):
+            raise ValueError("structured_payload.structured_candidates[] must be objects")
+        ticker = candidate.get("ticker")
+        provenance_by_path = _provenance_by_path(candidate)
+        entries: list[dict] = []
+        counts = {
+            "required_entries": len(REQUIRED_PROVENANCE_FIELDS),
+            "machine_draft": 0,
+            "human_confirmed": 0,
+            "human_edited": 0,
+            "missing_review_notes": 0,
+            "missing_provenance": 0,
+        }
+        for field_path in REQUIRED_PROVENANCE_FIELDS:
+            item = provenance_by_path.get(field_path)
+            if item is None:
+                counts["missing_provenance"] += 1
+                entries.append(
+                    {
+                        "field_path": field_path,
+                        "status": "MISSING",
+                        "has_review_note": False,
+                        "needs_review_note": True,
+                    }
+                )
+                continue
+            status = item.get("status", "UNKNOWN")
+            review_note = item.get("review_note")
+            has_review_note = isinstance(review_note, str) and bool(review_note.strip())
+            needs_review_note = not has_review_note
+            if status == "MACHINE_DRAFT":
+                counts["machine_draft"] += 1
+            elif status == "HUMAN_CONFIRMED":
+                counts["human_confirmed"] += 1
+            elif status == "HUMAN_EDITED":
+                counts["human_edited"] += 1
+            if needs_review_note:
+                counts["missing_review_notes"] += 1
+            entries.append(
+                {
+                    "field_path": field_path,
+                    "status": status,
+                    "has_review_note": has_review_note,
+                    "needs_review_note": needs_review_note,
+                }
+            )
+
+        candidate_ready = (
+            counts["machine_draft"] == 0
+            and counts["missing_review_notes"] == 0
+            and counts["missing_provenance"] == 0
+            and not _contains_placeholder(candidate)
+        )
+        ready_for_finalization = ready_for_finalization and candidate_ready
+        for key, value in counts.items():
+            total_counts[key] += value
+        candidate_reports.append(
+            {
+                "ticker": ticker,
+                "ready_for_finalization": candidate_ready,
+                "counts": counts,
+                "entries": entries,
+            }
+        )
+
+    return {
+        "title": payload.get("title"),
+        "scan_date": payload.get("scan_date"),
+        "completion_status": payload.get("completion_status"),
+        "ready_for_finalization": ready_for_finalization,
+        "summary": total_counts,
+        "candidates": candidate_reports,
+    }
+
+
+def apply_review_note_updates(payload: dict, updates: list[dict[str, str]]) -> dict:
+    validate_structured_analysis(payload)
+    if not updates:
+        return deepcopy(payload)
+
+    structured_candidates = payload.get("structured_candidates")
+    if not isinstance(structured_candidates, list) or not structured_candidates:
+        raise ValueError("structured_payload.structured_candidates must be a non-empty list")
+
+    updated = deepcopy(payload)
+    candidates_by_ticker = {
+        candidate.get("ticker"): candidate
+        for candidate in updated["structured_candidates"]
+        if isinstance(candidate, dict) and isinstance(candidate.get("ticker"), str)
+    }
+    single_ticker = next(iter(candidates_by_ticker)) if len(candidates_by_ticker) == 1 else None
+
+    for update in updates:
+        ticker = update.get("ticker") or single_ticker
+        field_path = update.get("field_path")
+        note = update.get("review_note")
+        if not isinstance(ticker, str) or not ticker:
+            raise ValueError("review note updates must include ticker when multiple structured candidates exist")
+        if not isinstance(field_path, str) or not field_path:
+            raise ValueError("review note updates must include field_path")
+        if not isinstance(note, str) or not note.strip():
+            raise ValueError("review note updates must include a non-empty review_note")
+        candidate = candidates_by_ticker.get(ticker)
+        if candidate is None:
+            raise ValueError(f"structured analysis does not contain ticker {ticker}")
+        provenance_item = _provenance_by_path(candidate).get(field_path)
+        if provenance_item is None:
+            raise ValueError(f"structured candidate {ticker} does not contain provenance for {field_path}")
+        provenance_item["review_note"] = note.strip()
+
+    return updated
 
 
 def _validate_generation_fingerprint_continuity(payload: dict) -> None:
@@ -479,3 +621,22 @@ def finalize_structured_analysis_file(
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(payload, indent=2))
     return payload
+
+
+def review_structured_analysis_file(
+    structured_analysis_path: Path,
+    *,
+    json_out: Path | None = None,
+    overlay_out: Path | None = None,
+    note_updates: list[dict[str, str]] | None = None,
+) -> dict:
+    payload = load_json(structured_analysis_path)
+    updated_payload = apply_review_note_updates(payload, note_updates or [])
+    if overlay_out is not None:
+        overlay_out.parent.mkdir(parents=True, exist_ok=True)
+        overlay_out.write_text(json.dumps(updated_payload, indent=2))
+    report = review_structured_analysis(updated_payload)
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(report, indent=2))
+    return report

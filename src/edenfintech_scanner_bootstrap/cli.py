@@ -15,7 +15,11 @@ from .judge import run_judge_file
 from .live_scan import run_live_scan
 from .pipeline import load_scan_input_template_text, run_scan_file, validate_scan_input_file
 from .regression import run_regression_suite
-from .structured_analysis import build_structured_analysis_template_file, finalize_structured_analysis_file
+from .structured_analysis import (
+    build_structured_analysis_template_file,
+    finalize_structured_analysis_file,
+    review_structured_analysis_file,
+)
 from .validation import validate_assets
 
 
@@ -140,6 +144,38 @@ def _cmd_finalize_structured_analysis(
     return 0
 
 
+def _parse_review_note_update(spec: str) -> dict[str, str]:
+    if "=" not in spec:
+        raise ValueError("review note update must use FIELD_PATH=NOTE or TICKER:FIELD_PATH=NOTE")
+    target, note = spec.split("=", 1)
+    ticker = None
+    field_path = target
+    if ":" in target:
+        ticker, field_path = target.split(":", 1)
+    return {
+        "ticker": ticker or "",
+        "field_path": field_path.strip(),
+        "review_note": note.strip(),
+    }
+
+
+def _cmd_review_structured_analysis(
+    structured_analysis_path: str,
+    json_out: str | None,
+    overlay_out: str | None,
+    set_note: list[str] | None,
+) -> int:
+    updates = [_parse_review_note_update(spec) for spec in (set_note or [])]
+    report = review_structured_analysis_file(
+        Path(structured_analysis_path),
+        json_out=Path(json_out) if json_out else None,
+        overlay_out=Path(overlay_out) if overlay_out else None,
+        note_updates=updates,
+    )
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 def _cmd_run_judge(report_path: str, execution_log_path: str) -> int:
     load_config()
     result = run_judge_file(Path(report_path), Path(execution_log_path))
@@ -255,6 +291,16 @@ def build_parser() -> argparse.ArgumentParser:
     generate_structured_analysis_draft.add_argument("raw_bundle_path")
     generate_structured_analysis_draft.add_argument("--json-out")
 
+    review_structured_analysis = subparsers.add_parser("review-structured-analysis")
+    review_structured_analysis.add_argument("structured_analysis_path")
+    review_structured_analysis.add_argument("--json-out")
+    review_structured_analysis.add_argument("--overlay-out")
+    review_structured_analysis.add_argument(
+        "--set-note",
+        action="append",
+        help="Use FIELD_PATH=NOTE or TICKER:FIELD_PATH=NOTE to update review_note without changing judgments.",
+    )
+
     finalize_structured_analysis = subparsers.add_parser("finalize-structured-analysis")
     finalize_structured_analysis.add_argument("structured_analysis_path")
     finalize_structured_analysis.add_argument("--reviewer", required=True)
@@ -325,6 +371,13 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_build_structured_analysis_template(args.raw_bundle_path, args.json_out)
     if args.command == "generate-structured-analysis-draft":
         return _cmd_generate_structured_analysis_draft(args.raw_bundle_path, args.json_out)
+    if args.command == "review-structured-analysis":
+        return _cmd_review_structured_analysis(
+            args.structured_analysis_path,
+            args.json_out,
+            args.overlay_out,
+            args.set_note,
+        )
     if args.command == "finalize-structured-analysis":
         return _cmd_finalize_structured_analysis(
             args.structured_analysis_path,
