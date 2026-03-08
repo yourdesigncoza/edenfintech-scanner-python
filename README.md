@@ -229,7 +229,10 @@ writes review artifacts into `review/` while keeping retrieval artifacts under
 enriched raw bundle, scan input, report, execution log, judge output, and a
 packaged copy of the finalized overlay under `final/`, plus a package manifest
 at the run root. The manifest is the stable machine-readable index; the
-subdirectories are the human-facing layout.
+subdirectories are the human-facing layout. When the finalized overlay comes
+from an earlier review package, `build-review-package` reuses that package's
+`raw/merged-raw.json` and sibling raw artifacts instead of refetching live
+data, so fingerprint continuity is preserved through the final package step.
 
 The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
 the pipeline falls back to a deterministic local judge that stays within the

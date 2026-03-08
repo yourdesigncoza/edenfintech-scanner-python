@@ -39,6 +39,7 @@ Build the initial review package, inspect `review/review-checklist.*` and `revie
 
 Review package layout:
 Expect one manifest at the run root, retrieval artifacts under `raw/`, reviewer-facing checklist and note-suggestion files under `review/`, and executable scan artifacts plus the packaged finalized overlay under `final/`.
+When rebuilding a package from a finalized overlay that came from an earlier review package, the packaging flow should reuse that package's `raw/` artifacts instead of refetching live data, otherwise source-bundle fingerprint continuity can break on small provider-response changes.
 
 ## Coding Style & Naming Conventions
 Follow the existing Python style: 4-space indentation, explicit type hints, `from __future__ import annotations`, and small focused functions. Use `snake_case` for modules, functions, variables, and fixture keys; use `PascalCase` for dataclasses such as `ValidationReport`. Keep CLI output deterministic and prefer standard-library-only solutions unless a dependency is clearly justified. No formatter or linter is configured here, so match the surrounding code closely.

@@ -206,6 +206,49 @@ class ReviewPackageTest(unittest.TestCase):
             self.assertIn("structured_analysis_finalized", manifest["artifacts"])
             self.assertEqual(Path(manifest["directories"]["final"]).name, "final")
 
+    def test_build_review_package_reuses_prior_raw_bundle_for_finalized_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            initial_package = build_review_package(
+                ["RAW1"],
+                out_dir=out_dir / "initial-package",
+                config=_config(),
+                fmp_transport=_mock_fmp_transport,
+                gemini_transport=_mock_gemini_transport,
+            )
+            finalized_overlay = _finalized_overlay(
+                initial_package.written_paths["structured_analysis_template"],
+                out_dir / "initial-package" / "review" / "structured-analysis-finalized.json",
+            )
+
+            def changed_gemini_transport(url: str, headers: dict[str, str], payload: dict) -> dict:
+                return {
+                    "text": (
+                        '{"research_notes":[{"claim":"Demand changed.","source_title":"Alt deck","source_url":"https://example.com/alt"}],'
+                        '"catalyst_evidence":[{"claim":"Changed catalyst.","source_title":"Alt call","source_url":"https://example.com/alt-call"}],'
+                        '"risk_evidence":[{"claim":"Changed risk.","source_title":"Alt 10-K","source_url":"https://example.com/alt-10k"}],'
+                        '"management_observations":[],'
+                        '"moat_observations":[],'
+                        '"precedent_observations":[],'
+                        '"epistemic_anchors":[]}'
+                    )
+                }
+
+            result = build_review_package(
+                ["RAW1"],
+                out_dir=out_dir / "rebuilt-package",
+                structured_analysis_path=finalized_overlay,
+                config=_config(),
+                fmp_transport=_mock_fmp_transport,
+                gemini_transport=changed_gemini_transport,
+            )
+
+            self.assertEqual(result.live_scan_result.stop_at, "report")
+            self.assertTrue(result.written_paths["report_json"].exists())
+            rebuilt_merged = json.loads(result.written_paths["merged_raw"].read_text(encoding="utf-8"))
+            original_merged = json.loads(initial_package.written_paths["merged_raw"].read_text(encoding="utf-8"))
+            self.assertEqual(rebuilt_merged, original_merged)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -31,6 +31,42 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _reuse_raw_bundle_dir(structured_analysis_path: Path) -> Path | None:
+    review_dir = structured_analysis_path.parent
+    package_dir = review_dir.parent
+    candidate = package_dir / "raw"
+    required = [
+        candidate / "fmp-raw.json",
+        candidate / "gemini-raw.json",
+        candidate / "merged-raw.json",
+        candidate / "structured-analysis-template.json",
+        candidate / "structured-analysis-draft.json",
+    ]
+    if review_dir.name != "review":
+        return None
+    if all(path.exists() for path in required):
+        return candidate
+    return None
+
+
+def _copy_reused_raw_bundle(raw_source_dir: Path, raw_dir: Path) -> dict[str, Path]:
+    mapping = {
+        "fmp_raw": "fmp-raw.json",
+        "gemini_raw": "gemini-raw.json",
+        "merged_raw": "merged-raw.json",
+        "structured_analysis_template": "structured-analysis-template.json",
+        "structured_analysis_draft": "structured-analysis-draft.json",
+    }
+    written_paths: dict[str, Path] = {}
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    for key, filename in mapping.items():
+        source = raw_source_dir / filename
+        target = raw_dir / filename
+        shutil.copyfile(source, target)
+        written_paths[key] = target
+    return written_paths
+
+
 def build_review_package(
     tickers: list[str],
     *,
@@ -48,21 +84,25 @@ def build_review_package(
     review_dir = out_dir / "review"
     final_dir = out_dir / "final"
 
-    raw_live_scan_result = run_live_scan(
-        tickers,
-        out_dir=raw_dir,
-        stop_at="raw-bundle",
-        config=config,
-        fmp_transport=fmp_transport,
-        gemini_transport=gemini_transport,
-        focus=focus,
-        research_question=research_question,
-        gemini_model=gemini_model,
-    )
-
-    written_paths = dict(raw_live_scan_result.written_paths)
+    reused_raw_dir = _reuse_raw_bundle_dir(structured_analysis_path) if structured_analysis_path is not None else None
+    if reused_raw_dir is not None:
+        written_paths = _copy_reused_raw_bundle(reused_raw_dir, raw_dir)
+        raw_live_scan_result = LiveScanResult(stop_at="raw-bundle", out_dir=raw_dir, written_paths=written_paths)
+    else:
+        raw_live_scan_result = run_live_scan(
+            tickers,
+            out_dir=raw_dir,
+            stop_at="raw-bundle",
+            config=config,
+            fmp_transport=fmp_transport,
+            gemini_transport=gemini_transport,
+            focus=focus,
+            research_question=research_question,
+            gemini_model=gemini_model,
+        )
+        written_paths = dict(raw_live_scan_result.written_paths)
     stop_at = "raw-bundle"
-    review_source = raw_live_scan_result.written_paths["structured_analysis_draft"]
+    review_source = written_paths["structured_analysis_draft"]
 
     if structured_analysis_path is not None:
         stop_at = "report"
