@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .assets import load_json, structured_analysis_schema_path
@@ -40,6 +41,7 @@ REQUIRED_PROVENANCE_FIELDS = [
     "epistemic_inputs.q4_nonbinary",
     "epistemic_inputs.q5_macro",
 ]
+FINAL_PROVENANCE_STATUSES = {"HUMAN_EDITED", "HUMAN_CONFIRMED"}
 
 
 def _load_schema() -> dict:
@@ -112,7 +114,7 @@ def _template_field_provenance(evidence_context: dict) -> list[dict]:
     ]
 
 
-def _validate_finalization_provenance(candidate: dict) -> None:
+def _validate_provenance_coverage(candidate: dict, *, allow_machine_draft: bool) -> None:
     provenance = candidate.get("field_provenance")
     if not isinstance(provenance, list) or not provenance:
         raise ValueError(f"structured candidate {candidate.get('ticker')} must include field_provenance before apply")
@@ -128,7 +130,7 @@ def _validate_finalization_provenance(candidate: dict) -> None:
         if field_path in provenance_by_path:
             raise ValueError(f"structured candidate {candidate.get('ticker')} has duplicate provenance for {field_path}")
         provenance_by_path[field_path] = item
-        if status == "MACHINE_DRAFT":
+        if not allow_machine_draft and status == "MACHINE_DRAFT":
             raise ValueError(
                 f"structured candidate {candidate.get('ticker')} still has MACHINE_DRAFT provenance for {field_path}"
             )
@@ -145,6 +147,19 @@ def validate_structured_analysis(payload: dict) -> None:
         validate_instance(payload, _load_schema())
     except SchemaValidationError as exc:
         raise ValueError(f"structured analysis schema validation failed: {exc}") from exc
+
+
+def _validate_generation_fingerprint_continuity(payload: dict) -> None:
+    source_bundle = payload.get("source_bundle")
+    if not isinstance(source_bundle, dict):
+        raise ValueError("structured_payload.source_bundle must be an object")
+    generation_metadata = payload.get("generation_metadata")
+    if not isinstance(generation_metadata, dict):
+        raise ValueError("structured analysis must include generation_metadata")
+    source_fingerprint = source_bundle.get("raw_bundle_fingerprint")
+    generation_fingerprint = generation_metadata.get("raw_bundle_fingerprint")
+    if source_fingerprint != generation_fingerprint:
+        raise ValueError("structured analysis generation metadata fingerprint does not match source_bundle")
 
 
 def _candidate_defaults(raw_candidate: dict) -> tuple[dict, dict]:
@@ -279,6 +294,8 @@ def apply_structured_analysis(raw_bundle: dict, structured_payload: dict) -> dic
 
     if structured_payload.get("completion_status") != "FINALIZED":
         raise ValueError("structured analysis must be FINALIZED before it can be applied")
+    if not isinstance(structured_payload.get("finalization_metadata"), dict):
+        raise ValueError("structured analysis must include finalization_metadata before apply")
 
     source_bundle = structured_payload.get("source_bundle")
     if not isinstance(source_bundle, dict):
@@ -295,9 +312,8 @@ def apply_structured_analysis(raw_bundle: dict, structured_payload: dict) -> dic
     if source_bundle.get("raw_bundle_fingerprint") != _raw_bundle_fingerprint(raw_bundle):
         raise ValueError("structured analysis source bundle fingerprint does not match the current raw bundle")
 
-    generation_metadata = structured_payload.get("generation_metadata")
-    if not isinstance(generation_metadata, dict):
-        raise ValueError("structured analysis must include generation_metadata before apply")
+    _validate_generation_fingerprint_continuity(structured_payload)
+    generation_metadata = structured_payload["generation_metadata"]
     if generation_metadata.get("raw_bundle_fingerprint") != _raw_bundle_fingerprint(raw_bundle):
         raise ValueError("structured analysis generation metadata fingerprint does not match the current raw bundle")
 
@@ -310,7 +326,7 @@ def apply_structured_analysis(raw_bundle: dict, structured_payload: dict) -> dic
             raise ValueError(f"duplicate structured candidate for ticker {ticker}")
         if _contains_placeholder(candidate):
             raise ValueError(f"structured candidate {ticker} still contains placeholder markers")
-        _validate_finalization_provenance(candidate)
+        _validate_provenance_coverage(candidate, allow_machine_draft=False)
         structured_by_ticker[ticker] = candidate
 
     merged = deepcopy(raw_bundle)
@@ -359,6 +375,78 @@ def apply_structured_analysis(raw_bundle: dict, structured_payload: dict) -> dic
 
 def build_structured_analysis_template_file(raw_bundle_path: Path, json_out: Path | None = None) -> dict:
     payload = structured_analysis_template(load_json(raw_bundle_path))
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(payload, indent=2))
+    return payload
+
+
+def finalize_structured_analysis(
+    payload: dict,
+    *,
+    reviewer: str,
+    final_status: str = "HUMAN_CONFIRMED",
+    note: str | None = None,
+) -> dict:
+    structured_candidates = payload.get("structured_candidates")
+    if isinstance(structured_candidates, list):
+        for candidate in structured_candidates:
+            if isinstance(candidate, dict) and _contains_placeholder(candidate):
+                ticker = candidate.get("ticker")
+                if ticker:
+                    raise ValueError(f"structured candidate {ticker} still contains placeholder markers")
+                raise ValueError("structured analysis still contains placeholder markers")
+    validate_structured_analysis(payload)
+    if payload.get("completion_status") != "DRAFT":
+        raise ValueError("structured analysis must be DRAFT before finalization")
+    if final_status not in FINAL_PROVENANCE_STATUSES:
+        raise ValueError(f"final_status must be one of: {', '.join(sorted(FINAL_PROVENANCE_STATUSES))}")
+    if not isinstance(reviewer, str) or not reviewer.strip():
+        raise ValueError("reviewer must be a non-empty string")
+
+    _validate_generation_fingerprint_continuity(payload)
+    finalized = deepcopy(payload)
+    converted_fields = 0
+    for candidate in finalized.get("structured_candidates", []):
+        ticker = candidate.get("ticker")
+        if _contains_placeholder(candidate):
+            raise ValueError(f"structured candidate {ticker} still contains placeholder markers")
+        _validate_provenance_coverage(candidate, allow_machine_draft=True)
+        for item in candidate["field_provenance"]:
+            if item.get("status") == "MACHINE_DRAFT":
+                item["status"] = final_status
+                converted_fields += 1
+
+    finalized["completion_status"] = "FINALIZED"
+    finalized["completion_note"] = note or f"Finalized by {reviewer.strip()} after human review."
+    finalized["finalization_metadata"] = {
+        "reviewer": reviewer.strip(),
+        "finalized_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "provenance_transition_status": final_status,
+        "converted_machine_fields": converted_fields,
+        "notes": [finalized["completion_note"]],
+    }
+
+    validate_structured_analysis(finalized)
+    for candidate in finalized["structured_candidates"]:
+        _validate_provenance_coverage(candidate, allow_machine_draft=False)
+    return finalized
+
+
+def finalize_structured_analysis_file(
+    structured_analysis_path: Path,
+    *,
+    reviewer: str,
+    json_out: Path | None = None,
+    final_status: str = "HUMAN_CONFIRMED",
+    note: str | None = None,
+) -> dict:
+    payload = finalize_structured_analysis(
+        load_json(structured_analysis_path),
+        reviewer=reviewer,
+        final_status=final_status,
+        note=note,
+    )
     if json_out is not None:
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(payload, indent=2))

@@ -15,7 +15,7 @@ from .judge import run_judge_file
 from .live_scan import run_live_scan
 from .pipeline import load_scan_input_template_text, run_scan_file, validate_scan_input_file
 from .regression import run_regression_suite
-from .structured_analysis import build_structured_analysis_template_file
+from .structured_analysis import build_structured_analysis_template_file, finalize_structured_analysis_file
 from .validation import validate_assets
 
 
@@ -117,6 +117,24 @@ def _cmd_generate_structured_analysis_draft(raw_bundle_path: str, json_out: str 
     payload = build_structured_analysis_draft_file(
         Path(raw_bundle_path),
         json_out=Path(json_out) if json_out else None,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_finalize_structured_analysis(
+    structured_analysis_path: str,
+    reviewer: str,
+    json_out: str | None,
+    final_status: str,
+    note: str | None,
+) -> int:
+    payload = finalize_structured_analysis_file(
+        Path(structured_analysis_path),
+        reviewer=reviewer,
+        json_out=Path(json_out) if json_out else None,
+        final_status=final_status,
+        note=note,
     )
     print(json.dumps(payload, indent=2))
     return 0
@@ -237,6 +255,17 @@ def build_parser() -> argparse.ArgumentParser:
     generate_structured_analysis_draft.add_argument("raw_bundle_path")
     generate_structured_analysis_draft.add_argument("--json-out")
 
+    finalize_structured_analysis = subparsers.add_parser("finalize-structured-analysis")
+    finalize_structured_analysis.add_argument("structured_analysis_path")
+    finalize_structured_analysis.add_argument("--reviewer", required=True)
+    finalize_structured_analysis.add_argument("--json-out")
+    finalize_structured_analysis.add_argument(
+        "--final-status",
+        choices=["HUMAN_CONFIRMED", "HUMAN_EDITED"],
+        default="HUMAN_CONFIRMED",
+    )
+    finalize_structured_analysis.add_argument("--note")
+
     run_judge = subparsers.add_parser("run-judge")
     run_judge.add_argument("report_path")
     run_judge.add_argument("execution_log_path")
@@ -296,6 +325,14 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_build_structured_analysis_template(args.raw_bundle_path, args.json_out)
     if args.command == "generate-structured-analysis-draft":
         return _cmd_generate_structured_analysis_draft(args.raw_bundle_path, args.json_out)
+    if args.command == "finalize-structured-analysis":
+        return _cmd_finalize_structured_analysis(
+            args.structured_analysis_path,
+            args.reviewer,
+            args.json_out,
+            args.final_status,
+            args.note,
+        )
     if args.command == "show-raw-scan-template":
         return _cmd_show_raw_scan_template()
     if args.command == "run-judge":

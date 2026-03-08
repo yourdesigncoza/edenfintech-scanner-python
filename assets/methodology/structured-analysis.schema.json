@@ -58,6 +58,9 @@
     "completion_note": {
       "type": "string"
     },
+    "finalization_metadata": {
+      "$ref": "#/definitions/finalization_metadata"
+    },
     "generation_metadata": {
       "$ref": "#/definitions/generation_metadata"
     },
@@ -276,6 +279,31 @@
         "source": { "type": "string", "minLength": 1 },
         "generator_version": { "type": "string", "minLength": 1 },
         "raw_bundle_fingerprint": { "type": "string", "minLength": 1 },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "finalization_metadata": {
+      "type": "object",
+      "required": [
+        "reviewer",
+        "finalized_at",
+        "provenance_transition_status",
+        "converted_machine_fields"
+      ],
+      "properties": {
+        "reviewer": { "type": "string", "minLength": 1 },
+        "finalized_at": { "type": "string", "minLength": 1 },
+        "provenance_transition_status": {
+          "type": "string",
+          "enum": ["HUMAN_EDITED", "HUMAN_CONFIRMED"]
+        },
+        "converted_machine_fields": {
+          "type": "integer",
+          "minimum": 0
+        },
         "notes": {
           "type": "array",
           "items": { "type": "string" }

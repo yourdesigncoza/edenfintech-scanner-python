@@ -7,6 +7,7 @@ from pathlib import Path
 
 from edenfintech_scanner_bootstrap.config import AppConfig
 from edenfintech_scanner_bootstrap.live_scan import run_live_scan
+from edenfintech_scanner_bootstrap.structured_analysis import finalize_structured_analysis_file
 
 
 def _mock_fmp_transport(endpoint: str, params: dict[str, str]):
@@ -82,14 +83,7 @@ def _config() -> AppConfig:
 
 def _finalized_overlay(template_path: Path, out_path: Path) -> Path:
     payload = json.loads(template_path.read_text())
-    payload["completion_status"] = "FINALIZED"
-    payload["completion_note"] = "Reviewed against the fetched raw bundle."
-    payload["generation_metadata"]["source"] = "human_review"
-    payload["generation_metadata"]["notes"].append("Human review completed before finalization.")
     for candidate in payload["structured_candidates"]:
-        for provenance in candidate["field_provenance"]:
-            provenance["status"] = "HUMAN_CONFIRMED"
-            provenance["rationale"] = "Human reviewer confirmed this field against the fetched evidence."
         candidate["screening_inputs"]["industry_understandable"] = True
         candidate["screening_inputs"]["double_plus_potential"] = True
         for check_name in ["solvency", "dilution", "revenue_growth", "roic", "valuation"]:
@@ -113,7 +107,13 @@ def _finalized_overlay(template_path: Path, out_path: Path) -> Path:
             candidate["epistemic_inputs"][key]["answer"] = "Yes"
             candidate["epistemic_inputs"][key]["justification"] = f"{key} structured justification."
             candidate["epistemic_inputs"][key]["evidence"] = f"{key} structured evidence."
-    out_path.write_text(json.dumps(payload, indent=2))
+    template_path.write_text(json.dumps(payload, indent=2))
+    finalize_structured_analysis_file(
+        template_path,
+        reviewer="Test Reviewer",
+        json_out=out_path,
+        note="Reviewed against the fetched raw bundle.",
+    )
     return out_path
 
 
@@ -179,6 +179,13 @@ class LiveScanTest(unittest.TestCase):
             )
             promoted = json.loads(raw_result.written_paths["structured_analysis_draft"].read_text())
             promoted["completion_status"] = "FINALIZED"
+            promoted["finalization_metadata"] = {
+                "reviewer": "Test Reviewer",
+                "finalized_at": "2026-03-08T10:00:00Z",
+                "provenance_transition_status": "HUMAN_CONFIRMED",
+                "converted_machine_fields": 0,
+                "notes": ["Metadata only promotion attempt."],
+            }
             promoted_path = out_dir / "machine-promoted.json"
             promoted_path.write_text(json.dumps(promoted, indent=2))
 
@@ -186,6 +193,58 @@ class LiveScanTest(unittest.TestCase):
                 run_live_scan(
                     ["RAW1"],
                     out_dir=out_dir / "promoted-run",
+                    stop_at="scan-input",
+                    structured_analysis_path=promoted_path,
+                    config=_config(),
+                    fmp_transport=_mock_fmp_transport,
+                    gemini_transport=_mock_gemini_transport,
+                )
+
+    def test_run_live_scan_rejects_finalized_overlay_without_finalization_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            raw_result = run_live_scan(
+                ["RAW1"],
+                out_dir=out_dir,
+                stop_at="raw-bundle",
+                config=_config(),
+                fmp_transport=_mock_fmp_transport,
+                gemini_transport=_mock_gemini_transport,
+            )
+            promoted = json.loads(raw_result.written_paths["structured_analysis_template"].read_text())
+            promoted["completion_status"] = "FINALIZED"
+            for candidate in promoted["structured_candidates"]:
+                for provenance in candidate["field_provenance"]:
+                    provenance["status"] = "HUMAN_CONFIRMED"
+                candidate["screening_inputs"]["industry_understandable"] = True
+                candidate["screening_inputs"]["double_plus_potential"] = True
+                for check_name in ["solvency", "dilution", "revenue_growth", "roic", "valuation"]:
+                    candidate["screening_inputs"][check_name]["verdict"] = "PASS"
+                    candidate["screening_inputs"][check_name]["evidence"] = "Reviewed."
+                candidate["analysis_inputs"]["margin_trend_gate"] = "PASS"
+                candidate["analysis_inputs"]["final_cluster_status"] = "CLEAR_WINNER"
+                candidate["analysis_inputs"]["catalyst_classification"] = "VALID_CATALYST"
+                candidate["analysis_inputs"]["dominant_risk_type"] = "Operational/Financial"
+                candidate["analysis_inputs"]["issues_and_fixes"] = "Structured issues and fixes."
+                candidate["analysis_inputs"]["moat_assessment"] = "Structured moat assessment."
+                candidate["analysis_inputs"]["thesis_summary"] = "Structured thesis."
+                candidate["analysis_inputs"]["catalysts"] = ["Structured catalyst"]
+                candidate["analysis_inputs"]["key_risks"] = ["Structured risk"]
+                candidate["analysis_inputs"]["base_case_assumptions"]["discount_path"] = "Structured discount path."
+                candidate["analysis_inputs"]["probability_inputs"]["base_rate"] = "Structured base rate."
+                candidate["analysis_inputs"]["probability_inputs"]["likert_adjustments"] = "Structured likert adjustments."
+                candidate["analysis_inputs"]["exception_candidate"]["reason"] = "No exception required."
+                for key in ["q1_operational", "q2_regulatory", "q3_precedent", "q4_nonbinary", "q5_macro"]:
+                    candidate["epistemic_inputs"][key]["answer"] = "Yes"
+                    candidate["epistemic_inputs"][key]["justification"] = f"{key} structured justification."
+                    candidate["epistemic_inputs"][key]["evidence"] = f"{key} structured evidence."
+            promoted_path = out_dir / "finalized-without-metadata.json"
+            promoted_path.write_text(json.dumps(promoted, indent=2))
+
+            with self.assertRaisesRegex(ValueError, "finalization_metadata before apply"):
+                run_live_scan(
+                    ["RAW1"],
+                    out_dir=out_dir / "missing-finalization-metadata",
                     stop_at="scan-input",
                     structured_analysis_path=promoted_path,
                     config=_config(),
