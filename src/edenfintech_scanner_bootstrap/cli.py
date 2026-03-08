@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from .assets import contract_path, load_json, scan_input_schema_path
+from .config import load_config
+from .importers import build_scan_input_file, load_raw_scan_template_text
 from .pipeline import load_scan_input_template_text, run_scan_file, validate_scan_input_file
 from .regression import run_regression_suite
 from .validation import validate_assets
@@ -63,6 +65,21 @@ def _cmd_show_scan_schema() -> int:
     return 0
 
 
+def _cmd_build_scan_input(raw_input_path: str, json_out: str | None) -> int:
+    load_config()
+    payload = build_scan_input_file(
+        Path(raw_input_path),
+        json_out=Path(json_out) if json_out else None,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_show_raw_scan_template() -> int:
+    print(load_raw_scan_template_text(), end="")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate EdenFinTech Python bootstrap assets")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -84,7 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
     validate_scan_input = subparsers.add_parser("validate-scan-input")
     validate_scan_input.add_argument("input_path")
 
+    build_scan_input = subparsers.add_parser("build-scan-input")
+    build_scan_input.add_argument("raw_input_path")
+    build_scan_input.add_argument("--json-out")
+
     subparsers.add_parser("show-scan-template")
+    subparsers.add_parser("show-raw-scan-template")
     subparsers.add_parser("show-scan-schema")
     return parser
 
@@ -105,6 +127,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_show_scan_template()
     if args.command == "validate-scan-input":
         return _cmd_validate_scan_input(args.input_path)
+    if args.command == "build-scan-input":
+        return _cmd_build_scan_input(args.raw_input_path, args.json_out)
+    if args.command == "show-raw-scan-template":
+        return _cmd_show_raw_scan_template()
     if args.command == "show-scan-schema":
         return _cmd_show_scan_schema()
 
