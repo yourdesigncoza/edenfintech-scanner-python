@@ -111,3 +111,126 @@ def score_evidence_quality(
         "concrete_ratio": concrete_ratio,
         "methodology_warning": methodology_warning,
     }
+
+
+# ---------------------------------------------------------------------------
+# CAGR exception panel — 3-agent unanimous vote
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ExceptionVote:
+    """Single agent vote on a CAGR exception request."""
+    agent: str
+    approve: bool
+    reasoning: str
+
+
+@dataclass(frozen=True)
+class ExceptionPanelResult:
+    """Result of 3-agent CAGR exception vote."""
+    votes: list[ExceptionVote]
+    unanimous: bool
+    approved: bool
+
+
+_EXCEPTION_AGENTS = [
+    ("analyst", "analyst_transport"),
+    ("validator", "validator_transport"),
+    ("epistemic", "epistemic_transport"),
+]
+
+
+def _build_exception_prompt(overlay_candidate: dict, raw_candidate: dict) -> str:
+    """Build focused CAGR exception vote prompt from overlay data."""
+    analysis = overlay_candidate.get("analysis_inputs", {})
+    ticker = overlay_candidate.get("ticker", "UNKNOWN")
+    thesis = analysis.get("thesis_summary", "N/A")
+    catalysts = analysis.get("catalyst_stack", [])
+    risks = analysis.get("key_risks", [])
+    base_assumptions = analysis.get("base_case_assumptions", {})
+    cagr = base_assumptions.get("cagr_pct", "N/A")
+
+    catalyst_text = "\n".join(
+        f"  - {c.get('catalyst', c) if isinstance(c, dict) else c}"
+        for c in catalysts
+    ) or "  None provided"
+
+    risk_text = "\n".join(f"  - {r}" for r in risks) or "  None provided"
+
+    return "\n".join([
+        f"CAGR EXCEPTION VOTE REQUEST for {ticker}",
+        "",
+        f"This candidate has a {cagr}% base CAGR (20-29.9% exception range).",
+        "Given the evidence summary below, should this candidate be granted",
+        "an exception to proceed despite the elevated CAGR? Vote APPROVE or REJECT.",
+        "",
+        f"Thesis: {thesis}",
+        "",
+        "Catalysts:",
+        catalyst_text,
+        "",
+        "Key Risks:",
+        risk_text,
+        "",
+        'Respond with JSON: {"approve": true/false, "reasoning": "your reasoning"}',
+    ])
+
+
+def cagr_exception_panel(
+    overlay_candidate: dict,
+    raw_candidate: dict,
+    *,
+    analyst_transport: Callable[[dict], dict] | None = None,
+    validator_transport: Callable[[dict], dict] | None = None,
+    epistemic_transport: Callable[[dict], dict] | None = None,
+    config=None,
+) -> ExceptionPanelResult:
+    """Run 3-agent CAGR exception vote panel.
+
+    Each agent receives a focused prompt asking whether a candidate with
+    a 20-29.9% CAGR should be granted an exception. Approval requires
+    unanimous agreement from all three agents.
+
+    Uses lightweight direct transport calls (not full client classes)
+    to avoid heavy analysis cost.
+    """
+    transports = {
+        "analyst": analyst_transport,
+        "validator": validator_transport,
+        "epistemic": epistemic_transport,
+    }
+
+    prompt = _build_exception_prompt(overlay_candidate, raw_candidate)
+    votes: list[ExceptionVote] = []
+
+    for agent_name, transport_key in _EXCEPTION_AGENTS:
+        transport = transports[agent_name]
+        if transport is None:
+            raise ValueError(f"{transport_key} is required for CAGR exception panel")
+
+        payload = {
+            "system": (
+                f"You are the {agent_name} agent voting on a CAGR exception. "
+                "Evaluate the evidence and vote APPROVE or REJECT."
+            ),
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
+        response = transport(payload)
+        parsed = json.loads(response["text"])
+
+        votes.append(ExceptionVote(
+            agent=agent_name,
+            approve=bool(parsed["approve"]),
+            reasoning=str(parsed["reasoning"]),
+        ))
+
+    approvals = [v.approve for v in votes]
+    all_same = len(set(approvals)) == 1
+    all_approved = all(approvals)
+
+    return ExceptionPanelResult(
+        votes=votes,
+        unanimous=all_same,
+        approved=all_approved,
+    )
