@@ -62,10 +62,10 @@ Plans:
   3. Provenance entries carry status `LLM_DRAFT` (distinct from `MACHINE_DRAFT`)
   4. Output passes `validate_structured_analysis()` schema validation including all enriched Codex fields (catalyst_stack, decision_memo, etc.)
   5. Worst-case scenario is generated before base case, and bear thesis before bull thesis (verifiable in output field ordering)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 03-01: Agent base infrastructure and analyst agent
+- [ ] 03-01-PLAN.md — LLM_DRAFT provenance infrastructure, ClaudeAnalystClient with constrained decoding, and generate_llm_analysis_draft with fixture-backed tests
 
 ### Phase 4: Review Agents
 **Goal**: Two independent review layers challenge the analyst's output — one adversarially, one with architectural blindness — before any overlay can be finalized
