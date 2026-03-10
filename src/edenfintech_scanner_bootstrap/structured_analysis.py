@@ -47,6 +47,7 @@ REQUIRED_PROVENANCE_FIELDS = [
     "epistemic_inputs.q5_macro",
 ]
 FINAL_PROVENANCE_STATUSES = {"HUMAN_EDITED", "HUMAN_CONFIRMED"}
+DRAFT_PROVENANCE_STATUSES = {"MACHINE_DRAFT", "LLM_DRAFT"}
 
 
 def _load_schema() -> dict:
@@ -151,9 +152,9 @@ def _validate_provenance_coverage(
         if field_path in provenance_by_path:
             raise ValueError(f"structured candidate {candidate.get('ticker')} has duplicate provenance for {field_path}")
         provenance_by_path[field_path] = item
-        if not allow_machine_draft and status == "MACHINE_DRAFT":
+        if not allow_machine_draft and status in DRAFT_PROVENANCE_STATUSES:
             raise ValueError(
-                f"structured candidate {candidate.get('ticker')} still has MACHINE_DRAFT provenance for {field_path}"
+                f"structured candidate {candidate.get('ticker')} still has {status} provenance for {field_path}"
             )
         if require_review_note_for_finalized:
             review_note = item.get("review_note")
@@ -731,7 +732,7 @@ def finalize_structured_analysis(
             require_review_note_for_finalized=False,
         )
         for item in candidate["field_provenance"]:
-            if item.get("status") == "MACHINE_DRAFT":
+            if item.get("status") in DRAFT_PROVENANCE_STATUSES:
                 review_note = item.get("review_note")
                 if not isinstance(review_note, str) or not review_note.strip():
                     raise ValueError(

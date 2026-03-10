@@ -323,7 +323,7 @@
         },
         "status": {
           "type": "string",
-          "enum": ["MACHINE_DRAFT", "HUMAN_EDITED", "HUMAN_CONFIRMED"]
+          "enum": ["MACHINE_DRAFT", "LLM_DRAFT", "HUMAN_EDITED", "HUMAN_CONFIRMED"]
         },
         "rationale": {
           "type": "string",

@@ -11,6 +11,8 @@ class AppConfig:
     gemini_api_key: str | None
     openai_api_key: str | None
     codex_judge_model: str
+    anthropic_api_key: str | None = None
+    analyst_model: str = "claude-sonnet-4-5-20250514"
 
     def require(self, *fields: str) -> None:
         missing = [field for field in fields if not getattr(self, field)]
@@ -92,4 +94,6 @@ def load_config(dotenv_path: Path | None = None) -> AppConfig:
         gemini_api_key=os.environ.get("GEMINI_API_KEY") or None,
         openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
         codex_judge_model=os.environ.get("CODEX_JUDGE_MODEL", "gpt-5-codex"),
+        anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
+        analyst_model=os.environ.get("ANALYST_MODEL", "claude-sonnet-4-5-20250514"),
     )
