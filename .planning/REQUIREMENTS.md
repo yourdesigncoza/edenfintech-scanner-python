@@ -52,9 +52,9 @@ Requirements for full integration. Each maps to roadmap phases.
 
 ### Red-Team Validator
 
-- [ ] **VALD-01**: Answers 5 Codex red-team questions as structured output
-- [ ] **VALD-02**: Contradiction detection: cross-check analyst assumptions against raw FMP data
-- [ ] **VALD-03**: Can REJECT overlay with specific objections or APPROVE
+- [x] **VALD-01**: Answers 5 Codex red-team questions as structured output
+- [x] **VALD-02**: Contradiction detection: cross-check analyst assumptions against raw FMP data
+- [x] **VALD-03**: Can REJECT overlay with specific objections or APPROVE
 
 ### Automation
 
@@ -147,9 +147,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EPST-04 | Phase 4 | Pending |
 | EPST-05 | Phase 4 | Pending |
 | EPST-06 | Phase 4 | Pending |
-| VALD-01 | Phase 4 | Pending |
-| VALD-02 | Phase 4 | Pending |
-| VALD-03 | Phase 4 | Pending |
+| VALD-01 | Phase 4 | Complete |
+| VALD-02 | Phase 4 | Complete |
+| VALD-03 | Phase 4 | Complete |
 | AUTO-01 | Phase 5 | Pending |
 | AUTO-02 | Phase 5 | Pending |
 | AUTO-03 | Phase 5 | Pending |
