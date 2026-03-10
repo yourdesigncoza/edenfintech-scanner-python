@@ -8,6 +8,7 @@ from pathlib import Path
 from .assets import contract_path, gemini_raw_bundle_schema_path, load_json, scan_input_schema_path, structured_analysis_schema_path
 from .cache import FmpCacheStore, cached_transport
 from .config import discover_project_root, load_config
+from .analyst import ClaudeAnalystClient, generate_llm_analysis_draft
 from .field_generation import build_structured_analysis_draft_file
 from .fmp import build_fmp_bundle_with_config, write_fmp_bundle
 from .gemini import GeminiClient, build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
@@ -126,6 +127,23 @@ def _cmd_generate_structured_analysis_draft(raw_bundle_path: str, json_out: str 
         Path(raw_bundle_path),
         json_out=Path(json_out) if json_out else None,
     )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_generate_llm_analysis_draft(raw_bundle_path: str, json_out: str | None) -> int:
+    config = load_config()
+    config.require("anthropic_api_key")
+    raw_bundle = load_json(Path(raw_bundle_path))
+    client = ClaudeAnalystClient(
+        config.anthropic_api_key,
+        model=config.analyst_model,
+    )
+    payload = generate_llm_analysis_draft(raw_bundle, client=client)
+    if json_out:
+        out_path = Path(json_out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(payload, indent=2))
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -383,6 +401,7 @@ def _cmd_build_review_package(
     research_question: str | None,
     gemini_model: str | None,
     fresh: bool = False,
+    use_analyst: bool = False,
 ) -> int:
     config = load_config()
     from .fmp import _default_transport
@@ -397,6 +416,7 @@ def _cmd_build_review_package(
         focus=focus,
         research_question=research_question,
         gemini_model=gemini_model or "gemini-3-pro-preview",
+        use_analyst=use_analyst,
     )
     print(
         json.dumps(
@@ -444,6 +464,10 @@ def build_parser() -> argparse.ArgumentParser:
     generate_structured_analysis_draft = subparsers.add_parser("generate-structured-analysis-draft")
     generate_structured_analysis_draft.add_argument("raw_bundle_path")
     generate_structured_analysis_draft.add_argument("--json-out")
+
+    generate_llm_analysis_draft_parser = subparsers.add_parser("generate-llm-analysis-draft")
+    generate_llm_analysis_draft_parser.add_argument("raw_bundle_path")
+    generate_llm_analysis_draft_parser.add_argument("--json-out")
 
     review_structured_analysis = subparsers.add_parser("review-structured-analysis")
     review_structured_analysis.add_argument("structured_analysis_path")
@@ -511,6 +535,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_review_package_parser.add_argument("--research-question")
     build_review_package_parser.add_argument("--gemini-model")
     build_review_package_parser.add_argument("--fresh", action="store_true", help="Bypass FMP cache")
+    build_review_package_parser.add_argument("--use-analyst", action="store_true", default=False, help="Use Claude analyst agent instead of deterministic machine draft.")
 
     subparsers.add_parser("cache-status")
     subparsers.add_parser("cache-clear")
@@ -553,6 +578,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_build_structured_analysis_template(args.raw_bundle_path, args.json_out)
     if args.command == "generate-structured-analysis-draft":
         return _cmd_generate_structured_analysis_draft(args.raw_bundle_path, args.json_out)
+    if args.command == "generate-llm-analysis-draft":
+        return _cmd_generate_llm_analysis_draft(args.raw_bundle_path, args.json_out)
     if args.command == "review-structured-analysis":
         return _cmd_review_structured_analysis(
             args.structured_analysis_path,
@@ -615,6 +642,7 @@ def main(argv: list[str] | None = None) -> int:
             args.research_question,
             args.gemini_model,
             fresh=args.fresh,
+            use_analyst=args.use_analyst,
         )
     if args.command == "hydrate-sector":
         return _cmd_hydrate_sector(args.sector_name, args.sub_sectors, args.model)

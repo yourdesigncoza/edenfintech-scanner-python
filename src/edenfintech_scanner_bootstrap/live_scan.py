@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from .analyst import ClaudeAnalystClient, generate_llm_analysis_draft
 from .config import AppConfig, load_config
 from .field_generation import generate_structured_analysis_draft
 from .fmp import FmpTransport, build_fmp_bundle_with_config, write_fmp_bundle
@@ -38,6 +39,7 @@ def run_live_scan(
     focus: str | None = None,
     research_question: str | None = None,
     gemini_model: str = DEFAULT_GEMINI_MODEL,
+    use_analyst: bool = False,
 ) -> LiveScanResult:
     if stop_at not in {"raw-bundle", "scan-input", "report"}:
         raise ValueError(f"unsupported stop_at value: {stop_at}")
@@ -78,7 +80,15 @@ def run_live_scan(
     structured_template_path = out_dir / "structured-analysis-template.json"
     _write_json(structured_template_path, structured_template)
     written_paths["structured_analysis_template"] = structured_template_path
-    structured_draft = generate_structured_analysis_draft(merged_bundle)
+    if use_analyst:
+        resolved_config.require("anthropic_api_key")
+        analyst_client = ClaudeAnalystClient(
+            resolved_config.anthropic_api_key,
+            model=resolved_config.analyst_model,
+        )
+        structured_draft = generate_llm_analysis_draft(merged_bundle, client=analyst_client)
+    else:
+        structured_draft = generate_structured_analysis_draft(merged_bundle)
     structured_draft_path = out_dir / "structured-analysis-draft.json"
     _write_json(structured_draft_path, structured_draft)
     written_paths["structured_analysis_draft"] = structured_draft_path
