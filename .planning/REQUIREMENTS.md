@@ -43,12 +43,12 @@ Requirements for full integration. Each maps to roadmap phases.
 
 ### Epistemic Reviewer
 
-- [ ] **EPST-01**: Code-enforced information barrier — function signature excludes scores, probabilities, valuations
-- [ ] **EPST-02**: 5 PCS answers with justification + evidence per answer
-- [ ] **EPST-03**: Evidence anchoring: each answer cites named source or declares NO_EVIDENCE
-- [ ] **EPST-04**: WEAK_EVIDENCE detection for vague citations without concrete source
-- [ ] **EPST-05**: Additional -1 friction if >= 3 of 5 answers are NO_EVIDENCE
-- [ ] **EPST-06**: PCS laundering detection (>80% evidence source overlap with analyst)
+- [x] **EPST-01**: Code-enforced information barrier — function signature excludes scores, probabilities, valuations
+- [x] **EPST-02**: 5 PCS answers with justification + evidence per answer
+- [x] **EPST-03**: Evidence anchoring: each answer cites named source or declares NO_EVIDENCE
+- [x] **EPST-04**: WEAK_EVIDENCE detection for vague citations without concrete source
+- [x] **EPST-05**: Additional -1 friction if >= 3 of 5 answers are NO_EVIDENCE
+- [x] **EPST-06**: PCS laundering detection (>80% evidence source overlap with analyst)
 
 ### Red-Team Validator
 
@@ -141,12 +141,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AGNT-03 | Phase 3 | Complete |
 | AGNT-04 | Phase 3 | Complete |
 | AGNT-05 | Phase 3 | Complete |
-| EPST-01 | Phase 4 | Pending |
-| EPST-02 | Phase 4 | Pending |
-| EPST-03 | Phase 4 | Pending |
-| EPST-04 | Phase 4 | Pending |
-| EPST-05 | Phase 4 | Pending |
-| EPST-06 | Phase 4 | Pending |
+| EPST-01 | Phase 4 | Complete |
+| EPST-02 | Phase 4 | Complete |
+| EPST-03 | Phase 4 | Complete |
+| EPST-04 | Phase 4 | Complete |
+| EPST-05 | Phase 4 | Complete |
+| EPST-06 | Phase 4 | Complete |
 | VALD-01 | Phase 4 | Complete |
 | VALD-02 | Phase 4 | Complete |
 | VALD-03 | Phase 4 | Complete |

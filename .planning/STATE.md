@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-10T17:49:11.940Z"
+stopped_at: Completed 04-01-PLAN.md (re-execution with implementation)
+last_updated: "2026-03-10T17:55:03.690Z"
 last_activity: 2026-03-10 -- Completed 04-02 Red-Team Validator
 progress:
   total_phases: 7
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 6
+  completed_phases: 4
+  total_plans: 9
+  completed_plans: 7
   percent: 71
 ---
 
@@ -78,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 04]: Allowlist-based payload filtering for validator to prevent score leakage
 - [Phase 04]: Deterministic contradictions run before LLM red-team questioning
 - [Phase 04]: shares_m_latest used as actual FMP field name (not diluted_shares_m)
+- [Phase 04]: EpistemicReviewInput frozen dataclass enforces barrier at Python type level, not just prompt
+- [Phase 04]: Transport-injectable pattern reused from analyst.py for reviewer client consistency
 
 ### Pending Todos
 
@@ -89,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T17:44:30Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-10T17:54:54.103Z
+Stopped at: Completed 04-01-PLAN.md (re-execution with implementation)
 Resume file: None
