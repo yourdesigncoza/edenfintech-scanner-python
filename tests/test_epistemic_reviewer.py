@@ -1,15 +1,43 @@
 """Tests for epistemic reviewer agent with information barrier enforcement."""
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 
 from edenfintech_scanner_bootstrap.epistemic_reviewer import (
     EpistemicReviewInput,
+    EpistemicReviewerClient,
     calculate_no_evidence_friction,
     detect_pcs_laundering,
+    epistemic_review,
     extract_epistemic_input,
     is_weak_evidence,
 )
+
+_FIXTURE_DIR = Path(__file__).parent / "fixtures" / "reviewer"
+_PCS_KEYS = ["q1_operational", "q2_regulatory", "q3_precedent", "q4_nonbinary", "q5_macro"]
+
+
+def _load_fixture() -> dict:
+    return json.loads((_FIXTURE_DIR / "llm-response-fixture.json").read_text())
+
+
+def _fixture_transport(request_payload: dict) -> dict:
+    """Mock transport that returns the fixture LLM response."""
+    return {"text": json.dumps(_load_fixture()), "stop_reason": "end_turn"}
+
+
+def _make_review_input() -> EpistemicReviewInput:
+    return EpistemicReviewInput(
+        ticker="ACME",
+        industry="Industrials",
+        thesis_summary="Turnaround with margin recovery and cost restructuring.",
+        key_risks=["Execution risk", "Demand weakness"],
+        catalysts=["Cost savings program", "Pricing reset"],
+        moat_assessment="Switching costs remain meaningful.",
+        dominant_risk_type="Operational/Financial",
+    )
 
 
 class TestInformationBarrier(unittest.TestCase):
@@ -210,6 +238,135 @@ class TestEvidenceQuality(unittest.TestCase):
         is_laundering, overlap_pct = detect_pcs_laundering(analyst_provenance, [])
         self.assertTrue(is_laundering)
         self.assertEqual(overlap_pct, 100.0)
+
+
+class TestEpistemicReview(unittest.TestCase):
+    """EPST-02, EPST-03: Client produces 5 PCS answers with evidence anchoring."""
+
+    def setUp(self) -> None:
+        self.client = EpistemicReviewerClient(
+            api_key="test-key",
+            transport=_fixture_transport,
+        )
+        self.review_input = _make_review_input()
+
+    def test_client_instantiates_with_mock_transport(self) -> None:
+        self.assertIsNotNone(self.client)
+
+    def test_review_produces_five_pcs_answers(self) -> None:
+        result = self.client.review(self.review_input)
+        for key in _PCS_KEYS:
+            self.assertIn(key, result, f"Missing PCS key: {key}")
+            answer_data = result[key]
+            self.assertIn("answer", answer_data)
+            self.assertIn("justification", answer_data)
+            self.assertIn("evidence", answer_data)
+            self.assertIn("evidence_source", answer_data)
+
+    def test_all_answers_are_yes_or_no(self) -> None:
+        result = self.client.review(self.review_input)
+        for key in _PCS_KEYS:
+            self.assertIn(result[key]["answer"], ["Yes", "No"])
+
+    def test_evidence_sources_are_concrete_or_no_evidence(self) -> None:
+        result = self.client.review(self.review_input)
+        for key in _PCS_KEYS:
+            source = result[key]["evidence_source"]
+            self.assertTrue(
+                isinstance(source, str) and len(source) > 0,
+                f"{key} evidence_source must be a non-empty string",
+            )
+
+    def test_output_shape_compatible_with_validate_pcs_answers(self) -> None:
+        """Output must have q1..q5 each with answer, justification, evidence."""
+        result = self.client.review(self.review_input)
+        for key in _PCS_KEYS:
+            answer_data = result[key]
+            self.assertIn(answer_data["answer"], ["Yes", "No"])
+            self.assertIsInstance(answer_data["justification"], str)
+            self.assertTrue(len(answer_data["justification"]) > 0)
+            self.assertIsInstance(answer_data["evidence"], str)
+            self.assertTrue(len(answer_data["evidence"]) > 0)
+
+    def test_weak_evidence_detected_in_fixture(self) -> None:
+        """Fixture has q3 with vague 'industry reports suggest' citation."""
+        result = self.client.review(self.review_input)
+        q3_source = result["q3_precedent"]["evidence_source"]
+        self.assertTrue(is_weak_evidence(q3_source))
+
+    def test_no_evidence_present_in_fixture(self) -> None:
+        """Fixture has q5 with NO_EVIDENCE."""
+        result = self.client.review(self.review_input)
+        self.assertEqual(result["q5_macro"]["evidence_source"], "NO_EVIDENCE")
+
+
+class TestEpistemicReviewFlow(unittest.TestCase):
+    """Full epistemic_review() call with evidence quality metadata."""
+
+    def setUp(self) -> None:
+        self.client = EpistemicReviewerClient(
+            api_key="test-key",
+            transport=_fixture_transport,
+        )
+        self.review_input = _make_review_input()
+
+    def test_epistemic_review_returns_weak_evidence_flags(self) -> None:
+        result = epistemic_review(self.review_input, client=self.client)
+        self.assertIn("weak_evidence_flags", result)
+        flags = result["weak_evidence_flags"]
+        for key in _PCS_KEYS:
+            self.assertIn(key, flags)
+        # q3 has vague citation
+        self.assertTrue(flags["q3_precedent"])
+
+    def test_epistemic_review_returns_additional_friction(self) -> None:
+        result = epistemic_review(self.review_input, client=self.client)
+        self.assertIn("additional_friction", result)
+        # Fixture has 1 NO_EVIDENCE (q5), so no friction penalty
+        self.assertEqual(result["additional_friction"], 0)
+
+    def test_epistemic_review_returns_no_evidence_count(self) -> None:
+        result = epistemic_review(self.review_input, client=self.client)
+        self.assertIn("no_evidence_count", result)
+        self.assertEqual(result["no_evidence_count"], 1)
+
+    def test_epistemic_review_contains_pcs_answers(self) -> None:
+        result = epistemic_review(self.review_input, client=self.client)
+        for key in _PCS_KEYS:
+            self.assertIn(key, result)
+
+    def test_laundering_detection_runs_with_mock_provenance(self) -> None:
+        result = epistemic_review(self.review_input, client=self.client)
+        # Extract reviewer citations from result
+        reviewer_citations = [
+            result[key]["evidence_source"]
+            for key in _PCS_KEYS
+            if result[key]["evidence_source"] != "NO_EVIDENCE"
+        ]
+        analyst_provenance = [
+            {"evidence_refs": [{"summary": "Unrelated source A"}, {"summary": "Unrelated source B"}]},
+        ]
+        is_laundering, overlap_pct = detect_pcs_laundering(analyst_provenance, reviewer_citations)
+        self.assertFalse(is_laundering)
+
+
+class TestTypeEnforcement(unittest.TestCase):
+    """EPST-01: Type enforcement on epistemic_review and client.review."""
+
+    def test_epistemic_review_rejects_non_dataclass(self) -> None:
+        client = EpistemicReviewerClient(api_key="test-key", transport=_fixture_transport)
+        with self.assertRaises(TypeError):
+            epistemic_review({"ticker": "ACME"}, client=client)
+
+    def test_client_review_rejects_non_dataclass(self) -> None:
+        client = EpistemicReviewerClient(api_key="test-key", transport=_fixture_transport)
+        with self.assertRaises(TypeError):
+            client.review({"ticker": "ACME"})
+
+    def test_epistemic_review_rejects_string(self) -> None:
+        client = EpistemicReviewerClient(api_key="test-key", transport=_fixture_transport)
+        with self.assertRaises(TypeError):
+            epistemic_review("not an input", client=client)
 
 
 if __name__ == "__main__":
