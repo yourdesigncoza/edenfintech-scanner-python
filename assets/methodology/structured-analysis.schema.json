@@ -323,7 +323,7 @@
         },
         "status": {
           "type": "string",
-          "enum": ["MACHINE_DRAFT", "LLM_DRAFT", "HUMAN_EDITED", "HUMAN_CONFIRMED"]
+          "enum": ["MACHINE_DRAFT", "LLM_DRAFT", "HUMAN_EDITED", "HUMAN_CONFIRMED", "LLM_CONFIRMED", "LLM_EDITED"]
         },
         "rationale": {
           "type": "string",
@@ -377,7 +377,7 @@
         "finalized_at": { "type": "string", "minLength": 1 },
         "provenance_transition_status": {
           "type": "string",
-          "enum": ["HUMAN_EDITED", "HUMAN_CONFIRMED"]
+          "enum": ["HUMAN_EDITED", "HUMAN_CONFIRMED", "LLM_CONFIRMED", "LLM_EDITED"]
         },
         "converted_machine_fields": {
           "type": "integer",

@@ -46,7 +46,7 @@ REQUIRED_PROVENANCE_FIELDS = [
     "epistemic_inputs.q4_nonbinary",
     "epistemic_inputs.q5_macro",
 ]
-FINAL_PROVENANCE_STATUSES = {"HUMAN_EDITED", "HUMAN_CONFIRMED"}
+FINAL_PROVENANCE_STATUSES = {"HUMAN_EDITED", "HUMAN_CONFIRMED", "LLM_CONFIRMED", "LLM_EDITED"}
 DRAFT_PROVENANCE_STATUSES = {"MACHINE_DRAFT", "LLM_DRAFT"}
 
 
@@ -189,6 +189,8 @@ def review_structured_analysis(payload: dict) -> dict:
         "machine_draft": 0,
         "human_confirmed": 0,
         "human_edited": 0,
+        "llm_confirmed": 0,
+        "llm_edited": 0,
         "missing_review_notes": 0,
         "missing_provenance": 0,
     }
@@ -205,6 +207,8 @@ def review_structured_analysis(payload: dict) -> dict:
             "machine_draft": 0,
             "human_confirmed": 0,
             "human_edited": 0,
+            "llm_confirmed": 0,
+            "llm_edited": 0,
             "missing_review_notes": 0,
             "missing_provenance": 0,
         }
@@ -231,6 +235,10 @@ def review_structured_analysis(payload: dict) -> dict:
                 counts["human_confirmed"] += 1
             elif status == "HUMAN_EDITED":
                 counts["human_edited"] += 1
+            elif status == "LLM_CONFIRMED":
+                counts["llm_confirmed"] += 1
+            elif status == "LLM_EDITED":
+                counts["llm_edited"] += 1
             if needs_review_note:
                 counts["missing_review_notes"] += 1
             entries.append(
