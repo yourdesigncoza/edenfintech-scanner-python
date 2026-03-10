@@ -70,6 +70,32 @@ def _mock_gemini_transport(url: str, headers: dict[str, str], payload: dict) -> 
     }
 
 
+def _enrich_analysis_inputs(analysis: dict) -> None:
+    """Add the 6 new required fields to a structured-analysis analysis_inputs dict."""
+    analysis["catalyst_stack"] = [
+        {"type": "HARD", "description": "Pricing reset", "timeline": "Q1 2026"}
+    ]
+    analysis["invalidation_triggers"] = [
+        {"trigger": "Margin erosion resumes", "evidence": "Quarterly gross margin drops"}
+    ]
+    analysis["decision_memo"] = {
+        "better_than_peer": "Higher FCF margin",
+        "safer_than_peer": "Lower leverage",
+        "what_makes_wrong": "Demand decline",
+    }
+    analysis["issues_and_fixes"] = [
+        {"issue": "Plant overcapacity", "fix": "Consolidation", "evidence_status": "ACTION_UNDERWAY"}
+    ]
+    analysis["setup_pattern"] = "QUALITY_FRANCHISE"
+    analysis["stretch_case_assumptions"] = {
+        "revenue_b": 4.0,
+        "fcf_margin_pct": 12.0,
+        "multiple": 24.0,
+        "shares_m": 110.0,
+        "years": 3.0,
+    }
+
+
 def _config() -> AppConfig:
     return AppConfig(
         fmp_api_key="fmp-test-key",
@@ -96,7 +122,7 @@ def _finalized_overlay(template_path: Path, out_path: Path) -> Path:
         analysis["final_cluster_status"] = "CLEAR_WINNER"
         analysis["catalyst_classification"] = "VALID_CATALYST"
         analysis["dominant_risk_type"] = "Operational/Financial"
-        analysis["issues_and_fixes"] = "Structured issues and fixes."
+        _enrich_analysis_inputs(analysis)
         analysis["moat_assessment"] = "Structured moat assessment."
         analysis["thesis_summary"] = "Structured thesis."
         analysis["catalysts"] = ["Structured catalyst"]
@@ -230,7 +256,7 @@ class LiveScanTest(unittest.TestCase):
                 candidate["analysis_inputs"]["final_cluster_status"] = "CLEAR_WINNER"
                 candidate["analysis_inputs"]["catalyst_classification"] = "VALID_CATALYST"
                 candidate["analysis_inputs"]["dominant_risk_type"] = "Operational/Financial"
-                candidate["analysis_inputs"]["issues_and_fixes"] = "Structured issues and fixes."
+                _enrich_analysis_inputs(candidate["analysis_inputs"])
                 candidate["analysis_inputs"]["moat_assessment"] = "Structured moat assessment."
                 candidate["analysis_inputs"]["thesis_summary"] = "Structured thesis."
                 candidate["analysis_inputs"]["catalysts"] = ["Structured catalyst"]
@@ -289,7 +315,7 @@ class LiveScanTest(unittest.TestCase):
                 candidate["analysis_inputs"]["final_cluster_status"] = "CLEAR_WINNER"
                 candidate["analysis_inputs"]["catalyst_classification"] = "VALID_CATALYST"
                 candidate["analysis_inputs"]["dominant_risk_type"] = "Operational/Financial"
-                candidate["analysis_inputs"]["issues_and_fixes"] = "Structured issues and fixes."
+                _enrich_analysis_inputs(candidate["analysis_inputs"])
                 candidate["analysis_inputs"]["moat_assessment"] = "Structured moat assessment."
                 candidate["analysis_inputs"]["thesis_summary"] = "Structured thesis."
                 candidate["analysis_inputs"]["catalysts"] = ["Structured catalyst"]
@@ -410,7 +436,7 @@ class LiveScanTest(unittest.TestCase):
             candidate["analysis_inputs"]["dominant_risk_type"] = "Operational/Financial"
             candidate["analysis_inputs"]["catalysts"] = ["Structured catalyst"]
             candidate["analysis_inputs"]["key_risks"] = ["Structured risk"]
-            candidate["analysis_inputs"]["issues_and_fixes"] = "Structured issues"
+            _enrich_analysis_inputs(candidate["analysis_inputs"])
             candidate["analysis_inputs"]["moat_assessment"] = "Structured moat"
             candidate["analysis_inputs"]["thesis_summary"] = "Structured thesis"
             candidate["analysis_inputs"]["base_case_assumptions"]["discount_path"] = "Structured path"

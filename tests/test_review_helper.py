@@ -27,8 +27,8 @@ class ReviewHelperTest(unittest.TestCase):
         report = review_structured_analysis(payload)
 
         self.assertFalse(report["ready_for_finalization"])
-        self.assertEqual(report["summary"]["machine_draft"], 26)
-        self.assertEqual(report["summary"]["missing_review_notes"], 26)
+        self.assertEqual(report["summary"]["machine_draft"], 31)
+        self.assertEqual(report["summary"]["missing_review_notes"], 31)
         self.assertEqual(report["candidates"][0]["entries"][0]["status"], "MACHINE_DRAFT")
         self.assertTrue(report["candidates"][0]["entries"][0]["needs_review_note"])
 
@@ -80,7 +80,7 @@ class ReviewHelperTest(unittest.TestCase):
             self.assertTrue(report_path.exists())
             self.assertTrue(markdown_path.exists())
             self.assertTrue(updated_overlay_path.exists())
-            self.assertEqual(report["summary"]["missing_review_notes"], 25)
+            self.assertEqual(report["summary"]["missing_review_notes"], 30)
             markdown = markdown_path.read_text(encoding="utf-8")
             self.assertIn("# Structured Analysis Review Checklist", markdown)
             self.assertIn("## RAW1", markdown)
@@ -122,7 +122,7 @@ class ReviewHelperTest(unittest.TestCase):
 
         report = suggest_review_notes(payload)
 
-        self.assertEqual(report["total_suggestions"], 25)
+        self.assertEqual(report["total_suggestions"], 30)
         first_candidate = report["candidates"][0]
         field_paths = {item["field_path"] for item in first_candidate["suggestions"]}
         self.assertNotIn("screening_inputs.industry_understandable", field_paths)
@@ -153,7 +153,7 @@ class ReviewHelperTest(unittest.TestCase):
 
             self.assertTrue(json_out.exists())
             self.assertTrue(markdown_out.exists())
-            self.assertEqual(report["total_suggestions"], 26)
+            self.assertEqual(report["total_suggestions"], 31)
 
 
 if __name__ == "__main__":

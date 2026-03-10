@@ -253,8 +253,27 @@ def _import_analysis(raw_candidate: dict) -> dict:
     for optional_key in ["base_rate", "likert_adjustments", "ceilings_applied", "threshold_proximity_warning"]:
         if optional_key in probability_inputs:
             analysis["probability"][optional_key] = probability_inputs[optional_key]
-    for optional_key in [
+    for required_key in [
+        "catalyst_stack",
+        "invalidation_triggers",
+        "decision_memo",
         "issues_and_fixes",
+        "setup_pattern",
+    ]:
+        if required_key in analysis_inputs:
+            analysis[required_key] = analysis_inputs[required_key]
+    if "stretch_case_assumptions" in analysis_inputs:
+        stretch = _require_dict(analysis_inputs["stretch_case_assumptions"], f"{raw_candidate['ticker']}.analysis_inputs.stretch_case_assumptions")
+        analysis["stretch_case"] = {
+            "revenue_b": _require_number(stretch.get("revenue_b"), f"{raw_candidate['ticker']}.stretch_case.revenue_b"),
+            "fcf_margin_pct": _require_number(stretch.get("fcf_margin_pct"), f"{raw_candidate['ticker']}.stretch_case.fcf_margin_pct"),
+            "multiple": _require_number(stretch.get("multiple"), f"{raw_candidate['ticker']}.stretch_case.multiple"),
+            "shares_m": _require_number(stretch.get("shares_m"), f"{raw_candidate['ticker']}.stretch_case.shares_m"),
+            "years": _require_number(stretch.get("years"), f"{raw_candidate['ticker']}.stretch_case.years"),
+        }
+        if "discount_path" in stretch:
+            analysis["stretch_case"]["discount_path"] = stretch["discount_path"]
+    for optional_key in [
         "moat_assessment",
         "thesis_summary",
         "key_financials",
@@ -391,7 +410,12 @@ def raw_scan_template() -> dict:
                     "final_cluster_status": candidate["analysis"]["final_cluster_status"],
                     "catalyst_classification": candidate["analysis"]["catalyst_classification"],
                     "dominant_risk_type": candidate["analysis"]["dominant_risk_type"],
+                    "catalyst_stack": candidate["analysis"]["catalyst_stack"],
+                    "invalidation_triggers": candidate["analysis"]["invalidation_triggers"],
+                    "decision_memo": candidate["analysis"]["decision_memo"],
                     "issues_and_fixes": candidate["analysis"]["issues_and_fixes"],
+                    "setup_pattern": candidate["analysis"]["setup_pattern"],
+                    "stretch_case_assumptions": candidate["analysis"]["stretch_case"],
                     "moat_assessment": candidate["analysis"]["moat_assessment"],
                     "thesis_summary": candidate["analysis"]["thesis_summary"],
                     "catalysts": candidate["analysis"]["catalysts"],

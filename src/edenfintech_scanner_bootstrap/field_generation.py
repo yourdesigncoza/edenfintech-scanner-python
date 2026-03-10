@@ -199,11 +199,53 @@ def _analysis_inputs(raw_candidate: dict) -> tuple[dict, list[dict]]:
     if dominant_risk_type in {"Regulatory/Political", "Legal/Investigation"}:
         base_probability_pct -= 10.0
 
-    issues_and_fixes = (
-        f"Draft issues focus on {risks[0].lower()}" if risks else "Draft issues are unresolved because the fetched raw bundle surfaced limited explicit risk detail."
-    )
-    if catalysts:
-        issues_and_fixes += f" Potential fix path: {catalysts[0]}"
+    issues_and_fixes_array: list[dict] = []
+    if risks and catalysts:
+        issues_and_fixes_array.append({
+            "issue": risks[0],
+            "fix": catalysts[0],
+            "evidence_status": "ACTION_UNDERWAY",
+        })
+    elif risks:
+        issues_and_fixes_array.append({
+            "issue": risks[0],
+            "fix": "No fix path identified in fetched sources.",
+            "evidence_status": "ANNOUNCED_ONLY",
+        })
+    else:
+        issues_and_fixes_array.append({
+            "issue": "No explicit issues surfaced in fetched sources.",
+            "fix": "Human review required.",
+            "evidence_status": "ANNOUNCED_ONLY",
+        })
+
+    catalyst_stack: list[dict] = []
+    for idx, cat in enumerate(catalysts):
+        cat_type = "HARD" if idx == 0 else "MEDIUM"
+        catalyst_stack.append({"type": cat_type, "description": cat, "timeline": "Machine draft"})
+    if not catalyst_stack:
+        catalyst_stack.append({"type": "SOFT", "description": "No catalysts in fetched sources.", "timeline": "Unknown"})
+
+    invalidation_triggers = [
+        {"trigger": risks[0] if risks else "No explicit trigger identified", "evidence": "Machine draft from fetched risk evidence."},
+    ]
+
+    decision_memo = {
+        "better_than_peer": "Machine draft: requires human assessment of peer comparison.",
+        "safer_than_peer": "Machine draft: requires human assessment of safety vs peers.",
+        "what_makes_wrong": risks[0] if risks else "Machine draft: no explicit wrong-case identified in fetched sources.",
+    }
+
+    setup_pattern = "OTHER"
+
+    stretch_case_assumptions = {
+        "revenue_b": latest_revenue,
+        "fcf_margin_pct": latest_fcf,
+        "multiple": 24.0,
+        "shares_m": shares_m,
+        "years": 3.0,
+        "discount_path": "Machine draft anchored to full margin recovery scenario.",
+    }
 
     moat_assessment = moat[0] if moat else "No strong moat evidence surfaced in fetched sources; human review required."
     thesis_summary = notes[0] if notes else f"{raw_candidate.get('ticker')} remains a machine-generated draft based on fetched FMP and Gemini evidence."
@@ -215,7 +257,12 @@ def _analysis_inputs(raw_candidate: dict) -> tuple[dict, list[dict]]:
         "final_cluster_status": final_cluster_status,
         "catalyst_classification": catalyst_classification,
         "dominant_risk_type": dominant_risk_type,
-        "issues_and_fixes": issues_and_fixes,
+        "catalyst_stack": catalyst_stack,
+        "invalidation_triggers": invalidation_triggers,
+        "decision_memo": decision_memo,
+        "issues_and_fixes": issues_and_fixes_array,
+        "setup_pattern": setup_pattern,
+        "stretch_case_assumptions": stretch_case_assumptions,
         "moat_assessment": moat_assessment,
         "thesis_summary": thesis_summary,
         "catalysts": catalysts or ["No catalyst evidence surfaced in fetched sources."],
@@ -273,11 +320,39 @@ def _analysis_inputs(raw_candidate: dict) -> tuple[dict, list[dict]]:
             [_evidence_ref("gemini_risk", "gemini_context.risk_evidence", "; ".join(risks) or "none")],
         ),
         _field_provenance(
+            "analysis_inputs.catalyst_stack",
+            "Catalyst stack draft maps fetched catalyst snippets to typed entries.",
+            [_evidence_ref("gemini_catalyst", "gemini_context.catalyst_evidence", f"{len(catalysts)} snippets")],
+        ),
+        _field_provenance(
+            "analysis_inputs.invalidation_triggers",
+            "Invalidation triggers draft derived from top risk snippet.",
+            [_evidence_ref("gemini_risk", "gemini_context.risk_evidence", risks[0] if risks else "none")],
+        ),
+        _field_provenance(
+            "analysis_inputs.decision_memo",
+            "Decision memo draft requires human assessment of peer comparison.",
+            [_evidence_ref("machine_rule", "analysis_inputs.decision_memo", "Machine draft default")],
+        ),
+        _field_provenance(
             "analysis_inputs.issues_and_fixes",
-            "Issues-and-fixes draft summarizes the top risk and catalyst snippets.",
+            "Issues-and-fixes draft summarizes the top risk and catalyst snippets as structured entries.",
             [
                 _evidence_ref("gemini_risk", "gemini_context.risk_evidence", risks[0] if risks else "none"),
                 _evidence_ref("gemini_catalyst", "gemini_context.catalyst_evidence", catalysts[0] if catalysts else "none"),
+            ],
+        ),
+        _field_provenance(
+            "analysis_inputs.setup_pattern",
+            "Setup pattern draft defaults to OTHER until human classification.",
+            [_evidence_ref("machine_rule", "analysis_inputs.setup_pattern", "Machine draft default: OTHER")],
+        ),
+        _field_provenance(
+            "analysis_inputs.stretch_case_assumptions",
+            "Stretch case draft is anchored to latest FMP-derived revenue and margin with higher multiple.",
+            [
+                _evidence_ref("fmp_derived", "fmp_context.derived.latest_revenue_b", str(latest_revenue)),
+                _evidence_ref("fmp_derived", "fmp_context.derived.latest_fcf_margin_pct", str(latest_fcf)),
             ],
         ),
         _field_provenance(

@@ -240,9 +240,45 @@
           ]
         },
         {
+          "field_path": "analysis_inputs.catalyst_stack",
+          "status": "MACHINE_DRAFT",
+          "rationale": "Catalyst stack draft maps fetched catalyst snippets to typed entries.",
+          "evidence_refs": [
+            {
+              "kind": "gemini_catalyst",
+              "path": "gemini_context.catalyst_evidence",
+              "summary": "1 snippets"
+            }
+          ]
+        },
+        {
+          "field_path": "analysis_inputs.invalidation_triggers",
+          "status": "MACHINE_DRAFT",
+          "rationale": "Invalidation triggers draft derived from top risk snippet.",
+          "evidence_refs": [
+            {
+              "kind": "gemini_risk",
+              "path": "gemini_context.risk_evidence",
+              "summary": "Execution risk remains around plant consolidation."
+            }
+          ]
+        },
+        {
+          "field_path": "analysis_inputs.decision_memo",
+          "status": "MACHINE_DRAFT",
+          "rationale": "Decision memo draft requires human assessment of peer comparison.",
+          "evidence_refs": [
+            {
+              "kind": "machine_rule",
+              "path": "analysis_inputs.decision_memo",
+              "summary": "Machine draft default"
+            }
+          ]
+        },
+        {
           "field_path": "analysis_inputs.issues_and_fixes",
           "status": "MACHINE_DRAFT",
-          "rationale": "Issues-and-fixes draft summarizes the top risk and catalyst snippets.",
+          "rationale": "Issues-and-fixes draft summarizes the top risk and catalyst snippets as structured entries.",
           "evidence_refs": [
             {
               "kind": "gemini_risk",
@@ -253,6 +289,35 @@
               "kind": "gemini_catalyst",
               "path": "gemini_context.catalyst_evidence",
               "summary": "Pricing reset underway across the installed base."
+            }
+          ]
+        },
+        {
+          "field_path": "analysis_inputs.setup_pattern",
+          "status": "MACHINE_DRAFT",
+          "rationale": "Setup pattern draft defaults to OTHER until human classification.",
+          "evidence_refs": [
+            {
+              "kind": "machine_rule",
+              "path": "analysis_inputs.setup_pattern",
+              "summary": "Machine draft default: OTHER"
+            }
+          ]
+        },
+        {
+          "field_path": "analysis_inputs.stretch_case_assumptions",
+          "status": "MACHINE_DRAFT",
+          "rationale": "Stretch case draft is anchored to latest FMP-derived revenue and margin with higher multiple.",
+          "evidence_refs": [
+            {
+              "kind": "fmp_derived",
+              "path": "fmp_context.derived.latest_revenue_b",
+              "summary": "3.4"
+            },
+            {
+              "kind": "fmp_derived",
+              "path": "fmp_context.derived.latest_fcf_margin_pct",
+              "summary": "10.0"
             }
           ]
         },
@@ -523,7 +588,40 @@
         "final_cluster_status": "CLEAR_WINNER",
         "catalyst_classification": "VALID_CATALYST",
         "dominant_risk_type": "Operational/Financial",
-        "issues_and_fixes": "Draft issues focus on execution risk remains around plant consolidation. Potential fix path: Pricing reset underway across the installed base.",
+        "catalyst_stack": [
+          {
+            "type": "HARD",
+            "description": "Pricing reset underway across the installed base.",
+            "timeline": "Machine draft"
+          }
+        ],
+        "invalidation_triggers": [
+          {
+            "trigger": "Execution risk remains around plant consolidation.",
+            "evidence": "Machine draft from fetched risk evidence."
+          }
+        ],
+        "decision_memo": {
+          "better_than_peer": "Machine draft: requires human assessment of peer comparison.",
+          "safer_than_peer": "Machine draft: requires human assessment of safety vs peers.",
+          "what_makes_wrong": "Execution risk remains around plant consolidation."
+        },
+        "issues_and_fixes": [
+          {
+            "issue": "Execution risk remains around plant consolidation.",
+            "fix": "Pricing reset underway across the installed base.",
+            "evidence_status": "ACTION_UNDERWAY"
+          }
+        ],
+        "setup_pattern": "OTHER",
+        "stretch_case_assumptions": {
+          "revenue_b": 3.4,
+          "fcf_margin_pct": 10.0,
+          "multiple": 24.0,
+          "shares_m": 110.0,
+          "years": 3.0,
+          "discount_path": "Machine draft anchored to full margin recovery scenario."
+        },
         "moat_assessment": "Qualification cycles create sticky customer relationships.",
         "thesis_summary": "Demand is improving in core end markets. Primary catalyst draft: Pricing reset underway across the installed base.",
         "catalysts": [

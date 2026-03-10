@@ -30,7 +30,28 @@ def _review_ready_overlay() -> dict:
     analysis["final_cluster_status"] = "CLEAR_WINNER"
     analysis["catalyst_classification"] = "VALID_CATALYST"
     analysis["dominant_risk_type"] = "Operational/Financial"
-    analysis["issues_and_fixes"] = "Reviewed issues and fixes."
+    analysis["catalyst_stack"] = [
+        {"type": "HARD", "description": "Pricing reset", "timeline": "Q1 2026"}
+    ]
+    analysis["invalidation_triggers"] = [
+        {"trigger": "Margin erosion resumes", "evidence": "Gross margin drops"}
+    ]
+    analysis["decision_memo"] = {
+        "better_than_peer": "Higher FCF margin",
+        "safer_than_peer": "Lower leverage",
+        "what_makes_wrong": "Demand decline",
+    }
+    analysis["issues_and_fixes"] = [
+        {"issue": "Plant overcapacity", "fix": "Consolidation", "evidence_status": "ACTION_UNDERWAY"}
+    ]
+    analysis["setup_pattern"] = "QUALITY_FRANCHISE"
+    analysis["stretch_case_assumptions"] = {
+        "revenue_b": 4.0,
+        "fcf_margin_pct": 12.0,
+        "multiple": 24.0,
+        "shares_m": 110.0,
+        "years": 3.0,
+    }
     analysis["moat_assessment"] = "Reviewed moat assessment."
     analysis["thesis_summary"] = "Reviewed thesis summary."
     analysis["catalysts"] = ["Reviewed catalyst"]

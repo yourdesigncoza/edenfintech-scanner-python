@@ -149,6 +149,33 @@ def _screen_candidate(candidate: dict) -> tuple[bool, dict | None]:
     return True, None
 
 
+def _validate_catalyst_stack(candidate: dict, ticker: str) -> None:
+    analysis = candidate.get("analysis", {})
+    catalyst_stack = analysis.get("catalyst_stack", [])
+    hard_medium_count = sum(
+        1 for entry in catalyst_stack if entry.get("type") in ("HARD", "MEDIUM")
+    )
+    if hard_medium_count == 0:
+        raise ValueError(
+            f"{ticker}: catalyst_stack contains zero HARD/MEDIUM entries; "
+            f"at least one actionable catalyst is required"
+        )
+
+
+def _validate_issues_and_fixes(candidate: dict, ticker: str) -> None:
+    analysis = candidate.get("analysis", {})
+    issues = analysis.get("issues_and_fixes", [])
+    if isinstance(issues, list) and issues:
+        all_announced = all(
+            entry.get("evidence_status") == "ANNOUNCED_ONLY" for entry in issues
+        )
+        if all_announced:
+            raise ValueError(
+                f"{ticker}: all issues_and_fixes have evidence_status ANNOUNCED_ONLY; "
+                f"at least one must show ACTION_UNDERWAY, EARLY_RESULTS_VISIBLE, or PROVEN"
+            )
+
+
 def _validate_pcs_answers(candidate: dict) -> dict[str, dict[str, str]]:
     pcs = _require_dict(candidate.get("epistemic_review"), f"{candidate['ticker']}.epistemic_review")
     answers: dict[str, dict[str, str]] = {}
@@ -353,6 +380,8 @@ def validate_scan_input(payload: dict) -> None:
             _worst_case_details(item)
             _probability_details(item)
             _validate_pcs_answers(item)
+            _validate_catalyst_stack(item, item["ticker"])
+            _validate_issues_and_fixes(item, item["ticker"])
 
 
 def validate_scan_report(report: dict) -> None:
@@ -820,7 +849,30 @@ def scan_input_template() -> dict:
                     "margin_trend_gate": "PASS",
                     "final_cluster_status": "CLEAR_WINNER",
                     "catalyst_classification": "VALID_CATALYST",
-                    "issues_and_fixes": "Cost structure simplified; leverage is falling.",
+                    "catalyst_stack": [
+                        {"type": "HARD", "description": "Cost savings program", "timeline": "Q2 2026"},
+                        {"type": "MEDIUM", "description": "Pricing reset", "timeline": "FY2026"},
+                    ],
+                    "invalidation_triggers": [
+                        {"trigger": "Margin erosion resumes", "evidence": "Quarterly FCF margin below 5%"},
+                    ],
+                    "decision_memo": {
+                        "better_than_peer": "Higher FCF margin than direct competitors",
+                        "safer_than_peer": "Lower leverage ratio and better liquidity",
+                        "what_makes_wrong": "Demand decline in core end market",
+                    },
+                    "issues_and_fixes": [
+                        {"issue": "Cost structure elevated", "fix": "Cost savings program", "evidence_status": "ACTION_UNDERWAY"},
+                        {"issue": "Leverage above target", "fix": "Deleveraging from FCF", "evidence_status": "EARLY_RESULTS_VISIBLE"},
+                    ],
+                    "setup_pattern": "QUALITY_FRANCHISE",
+                    "stretch_case": {
+                        "revenue_b": 3.5,
+                        "fcf_margin_pct": 12.0,
+                        "multiple": 28.0,
+                        "shares_m": 120.0,
+                        "years": 3.0,
+                    },
                     "moat_assessment": "Switching costs remain meaningful.",
                     "thesis_summary": "Example turnaround with improving margins and identifiable catalysts.",
                     "catalysts": ["Cost savings program", "Pricing reset"],

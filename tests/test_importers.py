@@ -135,6 +135,28 @@ class ImporterE2ETest(unittest.TestCase):
                         "final_cluster_status": "CLEAR_WINNER",
                         "catalyst_classification": "VALID_CATALYST",
                         "dominant_risk_type": "Operational/Financial",
+                        "catalyst_stack": [
+                            {"type": "HARD", "description": "Pricing reset", "timeline": "Q1 2026"},
+                        ],
+                        "invalidation_triggers": [
+                            {"trigger": "Margin erosion resumes", "evidence": "Gross margin drops"},
+                        ],
+                        "decision_memo": {
+                            "better_than_peer": "Higher FCF margin",
+                            "safer_than_peer": "Lower leverage",
+                            "what_makes_wrong": "Demand decline",
+                        },
+                        "issues_and_fixes": [
+                            {"issue": "Plant overcapacity", "fix": "Consolidation", "evidence_status": "ACTION_UNDERWAY"},
+                        ],
+                        "setup_pattern": "QUALITY_FRANCHISE",
+                        "stretch_case_assumptions": {
+                            "revenue_b": 4.0,
+                            "fcf_margin_pct": 12.0,
+                            "multiple": 24.0,
+                            "shares_m": 110.0,
+                            "years": 3.0,
+                        },
                         "moat_assessment": "Existing moat note.",
                         "base_case_assumptions": {
                             "revenue_b": 3.4,

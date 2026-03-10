@@ -53,7 +53,31 @@
         "final_cluster_status": "CLEAR_WINNER",
         "catalyst_classification": "VALID_CATALYST",
         "dominant_risk_type": "Operational/Financial",
-        "issues_and_fixes": "Plant closures and pricing repair are already visible in gross margin.",
+        "catalyst_stack": [
+          {"type": "HARD", "description": "Pricing reset underway", "timeline": "Q1 2026"},
+          {"type": "MEDIUM", "description": "Plant consolidation", "timeline": "FY2026"}
+        ],
+        "invalidation_triggers": [
+          {"trigger": "Margin erosion resumes", "evidence": "Quarterly gross margin below prior trough"}
+        ],
+        "decision_memo": {
+          "better_than_peer": "Higher FCF margin than industrial peers",
+          "safer_than_peer": "Lower leverage and positive FCF trajectory",
+          "what_makes_wrong": "Demand softness in core end markets"
+        },
+        "issues_and_fixes": [
+          {"issue": "Plant overcapacity", "fix": "Consolidation underway", "evidence_status": "ACTION_UNDERWAY"},
+          {"issue": "Pricing lag", "fix": "Price increases visible in gross margin", "evidence_status": "EARLY_RESULTS_VISIBLE"}
+        ],
+        "setup_pattern": "QUALITY_FRANCHISE",
+        "stretch_case_assumptions": {
+          "revenue_b": 4.0,
+          "fcf_margin_pct": 12.0,
+          "multiple": 24.0,
+          "shares_m": 110.0,
+          "years": 3.0,
+          "discount_path": "Full margin recovery plus re-rating to industrial compounder multiple"
+        },
         "moat_assessment": "Long customer qualification cycles support switching costs.",
         "thesis_summary": "RAW1 is a turnaround with visible operating leverage and clear self-help catalysts.",
         "catalysts": [
