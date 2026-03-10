@@ -35,11 +35,11 @@ Requirements for full integration. Each maps to roadmap phases.
 
 ### Analyst Agent
 
-- [ ] **AGNT-01**: Claude analyst agent fills all `__REQUIRED__` placeholders from raw bundle + sector knowledge
-- [ ] **AGNT-02**: Provenance status `LLM_DRAFT` distinct from `MACHINE_DRAFT`
-- [ ] **AGNT-03**: Every field has `review_note` citing specific evidence
-- [ ] **AGNT-04**: Worst case generated BEFORE base case, bear thesis BEFORE bull (prompt discipline)
-- [ ] **AGNT-05**: Output validates against structured-analysis schema via constrained decoding
+- [x] **AGNT-01**: Claude analyst agent fills all `__REQUIRED__` placeholders from raw bundle + sector knowledge
+- [x] **AGNT-02**: Provenance status `LLM_DRAFT` distinct from `MACHINE_DRAFT`
+- [x] **AGNT-03**: Every field has `review_note` citing specific evidence
+- [x] **AGNT-04**: Worst case generated BEFORE base case, bear thesis BEFORE bull (prompt discipline)
+- [x] **AGNT-05**: Output validates against structured-analysis schema via constrained decoding
 
 ### Epistemic Reviewer
 
@@ -136,11 +136,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SECT-03 | Phase 2 | Complete |
 | SECT-04 | Phase 2 | Complete |
 | SECT-05 | Phase 2 | Complete |
-| AGNT-01 | Phase 3 | Pending |
-| AGNT-02 | Phase 3 | Pending |
-| AGNT-03 | Phase 3 | Pending |
-| AGNT-04 | Phase 3 | Pending |
-| AGNT-05 | Phase 3 | Pending |
+| AGNT-01 | Phase 3 | Complete |
+| AGNT-02 | Phase 3 | Complete |
+| AGNT-03 | Phase 3 | Complete |
+| AGNT-04 | Phase 3 | Complete |
+| AGNT-05 | Phase 3 | Complete |
 | EPST-01 | Phase 4 | Pending |
 | EPST-02 | Phase 4 | Pending |
 | EPST-03 | Phase 4 | Pending |
