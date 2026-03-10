@@ -22,6 +22,7 @@ EXPECTED_METHOD_FILES = {
     "scan-report.template.json",
     "structured-analysis.schema.json",
     "sector-knowledge.schema.json",
+    "holdings.schema.json",
 }
 
 EXPECTED_RULE_IDS = {

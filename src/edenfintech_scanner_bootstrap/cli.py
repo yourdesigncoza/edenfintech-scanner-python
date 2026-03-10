@@ -5,12 +5,13 @@ import json
 import sys
 from pathlib import Path
 
-from .assets import contract_path, gemini_raw_bundle_schema_path, load_json, scan_input_schema_path, structured_analysis_schema_path
+from .assets import contract_path, gemini_raw_bundle_schema_path, holdings_schema_path, load_json, scan_input_schema_path, structured_analysis_schema_path
 from .cache import FmpCacheStore, cached_transport
 from .config import discover_project_root, load_config
 from .analyst import ClaudeAnalystClient, generate_llm_analysis_draft
 from .field_generation import build_structured_analysis_draft_file
-from .fmp import build_fmp_bundle_with_config, write_fmp_bundle
+from .fmp import FmpClient, build_fmp_bundle_with_config, write_fmp_bundle
+from .holding_review import review_holding
 from .gemini import GeminiClient, build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
 from .importers import build_scan_input_file, load_raw_scan_template_text
 from .judge import run_judge_file
@@ -432,6 +433,71 @@ def _cmd_build_review_package(
     return 0
 
 
+def _cmd_review_holding(
+    tickers: list[str],
+    holdings_path: str,
+    json_out: str | None,
+) -> int:
+    from datetime import date, datetime
+
+    from .schemas import validate_instance
+
+    manifest_path = Path(holdings_path)
+    if not manifest_path.exists():
+        print(f"Error: holdings manifest not found: {manifest_path}", file=sys.stderr)
+        return 1
+
+    manifest = load_json(manifest_path)
+    schema = load_json(holdings_schema_path())
+    validate_instance(manifest, schema)
+
+    holdings_by_ticker = {h["ticker"]: h for h in manifest["holdings"]}
+
+    missing = [t for t in tickers if t not in holdings_by_ticker]
+    if missing:
+        print(f"Error: tickers not found in manifest: {', '.join(missing)}", file=sys.stderr)
+        return 1
+
+    config = load_config()
+    fmp = FmpClient(config.fmp_api_key)
+
+    results = []
+    today = date.today()
+    for ticker in tickers:
+        entry = holdings_by_ticker[ticker]
+        quote = fmp.quote(ticker)
+        current_price = quote["price"]
+
+        scan_date = datetime.strptime(entry["scan_date"], "%Y-%m-%d").date()
+        elapsed_years = (today - scan_date).days / 365.25
+        years_remaining = max(entry["base_case_assumptions"]["years"] - elapsed_years, 0.25)
+
+        holding_dict = {
+            "ticker": entry["ticker"],
+            "purchase_price": entry["purchase_price"],
+            "current_weight_pct": entry["current_weight_pct"],
+            "base_case_assumptions": entry["base_case_assumptions"],
+            "worst_case_assumptions": entry["worst_case_assumptions"],
+            "invalidation_triggers": entry["invalidation_triggers"],
+            "effective_probability": entry.get("probability_inputs", {}).get("base_probability_pct", 60.0),
+            "years_remaining": years_remaining,
+        }
+
+        result = review_holding(holding_dict, current_price)
+        results.append(result)
+
+    output = results[0] if len(results) == 1 else results
+    output_text = json.dumps(output, indent=2)
+
+    if json_out:
+        out_path = Path(json_out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(output_text)
+
+    print(output_text)
+    return 0
+
+
 def _cmd_auto_scan(tickers: list[str], out_dir: str | None, fresh: bool = False) -> int:
     config = load_config()
     config.require("fmp_api_key", "anthropic_api_key")
@@ -604,6 +670,11 @@ def build_parser() -> argparse.ArgumentParser:
     sector_scan_p.add_argument("--exclude-industry", nargs="*", help="Industries to exclude")
     sector_scan_p.add_argument("--fresh", action="store_true", help="Bypass cache")
 
+    review_holding_p = subparsers.add_parser("review-holding")
+    review_holding_p.add_argument("tickers", nargs="+")
+    review_holding_p.add_argument("--holdings-path", default="data/holdings/holdings.json")
+    review_holding_p.add_argument("--json-out", default=None)
+
     subparsers.add_parser("show-scan-template")
     subparsers.add_parser("show-raw-scan-template")
     subparsers.add_parser("show-scan-schema")
@@ -711,6 +782,8 @@ def main(argv: list[str] | None = None) -> int:
             args.sector_name, args.out_dir, args.max_workers,
             args.exclude_industry, fresh=args.fresh,
         )
+    if args.command == "review-holding":
+        return _cmd_review_holding(args.tickers, args.holdings_path, args.json_out)
     if args.command == "show-scan-schema":
         return _cmd_show_scan_schema()
     if args.command == "show-gemini-schema":

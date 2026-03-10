@@ -40,6 +40,10 @@ def structured_analysis_schema_path() -> Path:
     return methodology_root() / "structured-analysis.schema.json"
 
 
+def holdings_schema_path() -> Path:
+    return methodology_root() / "holdings.schema.json"
+
+
 def scan_report_schema_path() -> Path:
     return methodology_root() / "scan-report.schema.json"
 
