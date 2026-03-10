@@ -284,5 +284,169 @@ class TestGeminiSectorQueries(unittest.TestCase):
         self.assertEqual(call_count, 16)
 
 
+class TestSectorCli(unittest.TestCase):
+    """CLI integration tests for hydrate-sector and sector-status commands."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.project_root = Path(self.tmpdir)
+        # Patch discover_project_root to point to tmpdir
+        self._root_patcher = unittest.mock.patch(
+            "edenfintech_scanner_bootstrap.cli.discover_project_root",
+            return_value=self.project_root,
+        )
+        self._root_patcher.start()
+        # Also patch in sector module
+        self._sector_root_patcher = unittest.mock.patch(
+            "edenfintech_scanner_bootstrap.sector.discover_project_root",
+            return_value=self.project_root,
+        )
+        self._sector_root_patcher.start()
+
+    def tearDown(self):
+        self._root_patcher.stop()
+        self._sector_root_patcher.stop()
+        shutil.rmtree(self.tmpdir)
+
+    def _mock_config(self, **overrides):
+        from edenfintech_scanner_bootstrap.config import AppConfig
+        defaults = {
+            "fmp_api_key": "fake-fmp",
+            "gemini_api_key": "fake-gemini",
+            "openai_api_key": None,
+            "codex_judge_model": "gpt-5-codex",
+        }
+        defaults.update(overrides)
+        return AppConfig(**defaults)
+
+    def test_hydrate_sector_produces_knowledge_json(self):
+        """hydrate-sector 'Consumer Defensive' --sub-sectors 'Household Products' 'Food Products' produces knowledge.json."""
+        from edenfintech_scanner_bootstrap.cli import main
+
+        mock_transport = _make_mock_transport()
+        config = self._mock_config()
+
+        with unittest.mock.patch("edenfintech_scanner_bootstrap.cli.load_config", return_value=config), \
+             unittest.mock.patch("edenfintech_scanner_bootstrap.cli.GeminiClient") as MockClient:
+            mock_client_instance = MagicMock()
+            mock_client_instance.transport = mock_transport
+            mock_client_instance.model = "gemini-2.5-flash"
+            mock_client_instance.api_key = "fake-gemini"
+            MockClient.return_value = mock_client_instance
+
+            rc = main(["hydrate-sector", "Consumer Defensive", "--sub-sectors", "Household Products", "Food Products"])
+
+        self.assertEqual(rc, 0)
+        # Verify knowledge.json exists
+        knowledge_path = self.project_root / "data" / "sectors" / "consumer-defensive" / "knowledge.json"
+        self.assertTrue(knowledge_path.exists(), f"Expected knowledge.json at {knowledge_path}")
+
+    def test_hydrate_sector_without_sector_name_errors(self):
+        """hydrate-sector without sector_name argument prints usage error."""
+        from edenfintech_scanner_bootstrap.cli import main
+
+        with self.assertRaises(SystemExit) as ctx:
+            main(["hydrate-sector"])
+        self.assertNotEqual(ctx.exception.code, 0)
+
+    def test_sector_status_no_hydrated_sectors(self):
+        """sector-status with no hydrated sectors prints empty table."""
+        from edenfintech_scanner_bootstrap.cli import main
+
+        # Empty registry
+        registry_dir = self.project_root / "data" / "sectors"
+        registry_dir.mkdir(parents=True, exist_ok=True)
+        (registry_dir / "registry.json").write_text(json.dumps({"sectors": {}}))
+
+        rc = main(["sector-status"])
+        self.assertEqual(rc, 0)
+
+    def test_sector_status_shows_fresh_sector(self):
+        """sector-status with one hydrated sector prints sector name, date, and FRESH status."""
+        from edenfintech_scanner_bootstrap.cli import main
+        import io
+        from contextlib import redirect_stdout
+
+        registry_dir = self.project_root / "data" / "sectors"
+        registry_dir.mkdir(parents=True, exist_ok=True)
+        registry = {
+            "sectors": {
+                "consumer-defensive": {
+                    "sector_name": "Consumer Defensive",
+                    "hydrated_at": datetime.now().isoformat(),
+                    "sub_sectors": ["Household Products"],
+                    "knowledge_path": "data/sectors/consumer-defensive/knowledge.json",
+                }
+            }
+        }
+        (registry_dir / "registry.json").write_text(json.dumps(registry))
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = main(["sector-status"])
+        self.assertEqual(rc, 0)
+        output = buf.getvalue()
+        self.assertIn("Consumer Defensive", output)
+        self.assertIn("FRESH", output)
+
+    def test_sector_status_filter_single_sector(self):
+        """sector-status --sector 'Consumer Defensive' filters to single sector."""
+        from edenfintech_scanner_bootstrap.cli import main
+        import io
+        from contextlib import redirect_stdout
+
+        registry_dir = self.project_root / "data" / "sectors"
+        registry_dir.mkdir(parents=True, exist_ok=True)
+        registry = {
+            "sectors": {
+                "consumer-defensive": {
+                    "sector_name": "Consumer Defensive",
+                    "hydrated_at": datetime.now().isoformat(),
+                    "sub_sectors": ["Household Products"],
+                    "knowledge_path": "data/sectors/consumer-defensive/knowledge.json",
+                },
+                "technology": {
+                    "sector_name": "Technology",
+                    "hydrated_at": datetime.now().isoformat(),
+                    "sub_sectors": ["Software"],
+                    "knowledge_path": "data/sectors/technology/knowledge.json",
+                },
+            }
+        }
+        (registry_dir / "registry.json").write_text(json.dumps(registry))
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = main(["sector-status", "--sector", "Consumer Defensive"])
+        self.assertEqual(rc, 0)
+        output = buf.getvalue()
+        self.assertIn("Consumer Defensive", output)
+        self.assertNotIn("Technology", output)
+
+    def test_hydrate_sector_model_flag_passes_to_client(self):
+        """hydrate-sector with --model flag passes model to GeminiClient."""
+        from edenfintech_scanner_bootstrap.cli import main
+
+        mock_transport = _make_mock_transport()
+        config = self._mock_config()
+
+        with unittest.mock.patch("edenfintech_scanner_bootstrap.cli.load_config", return_value=config), \
+             unittest.mock.patch("edenfintech_scanner_bootstrap.cli.GeminiClient") as MockClient:
+            mock_client_instance = MagicMock()
+            mock_client_instance.transport = mock_transport
+            mock_client_instance.model = "gemini-2.5-pro"
+            mock_client_instance.api_key = "fake-gemini"
+            MockClient.return_value = mock_client_instance
+
+            rc = main([
+                "hydrate-sector", "Consumer Defensive",
+                "--sub-sectors", "Household Products",
+                "--model", "gemini-2.5-pro",
+            ])
+
+        self.assertEqual(rc, 0)
+        MockClient.assert_called_once_with("fake-gemini", model="gemini-2.5-pro")
+
+
 if __name__ == "__main__":
     unittest.main()
