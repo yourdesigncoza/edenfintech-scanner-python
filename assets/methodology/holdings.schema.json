@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Holdings Manifest",
+  "description": "Per-holding original valuation inputs for holding review.",
+  "type": "object",
+  "required": ["holdings"],
+  "properties": {
+    "holdings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/holding"
+      }
+    }
+  },
+  "$defs": {
+    "holding": {
+      "type": "object",
+      "required": [
+        "ticker",
+        "purchase_price",
+        "purchase_date",
+        "scan_date",
+        "current_weight_pct",
+        "base_case_assumptions",
+        "worst_case_assumptions",
+        "probability_inputs",
+        "dominant_risk_type",
+        "invalidation_triggers"
+      ],
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "minLength": 1
+        },
+        "purchase_price": {
+          "type": "number",
+          "minimum": 0
+        },
+        "purchase_date": {
+          "type": "string"
+        },
+        "scan_date": {
+          "type": "string"
+        },
+        "current_weight_pct": {
+          "type": "number",
+          "minimum": 0
+        },
+        "base_case_assumptions": {
+          "$ref": "#/$defs/base_case"
+        },
+        "worst_case_assumptions": {
+          "$ref": "#/$defs/worst_case"
+        },
+        "probability_inputs": {
+          "$ref": "#/$defs/probability_inputs"
+        },
+        "dominant_risk_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invalidation_triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/invalidation_trigger"
+          }
+        }
+      }
+    },
+    "base_case": {
+      "type": "object",
+      "required": ["revenue_b", "fcf_margin_pct", "multiple", "shares_m", "years"],
+      "properties": {
+        "revenue_b": { "type": "number" },
+        "fcf_margin_pct": { "type": "number" },
+        "multiple": { "type": "number" },
+        "shares_m": { "type": "number" },
+        "years": { "type": "number" }
+      }
+    },
+    "worst_case": {
+      "type": "object",
+      "required": ["revenue_b", "fcf_margin_pct", "multiple", "shares_m"],
+      "properties": {
+        "revenue_b": { "type": "number" },
+        "fcf_margin_pct": { "type": "number" },
+        "multiple": { "type": "number" },
+        "shares_m": { "type": "number" }
+      }
+    },
+    "probability_inputs": {
+      "type": "object",
+      "required": ["base_probability_pct"],
+      "properties": {
+        "base_probability_pct": { "type": "number" }
+      }
+    },
+    "invalidation_trigger": {
+      "type": "object",
+      "required": ["trigger", "evidence"],
+      "properties": {
+        "trigger": { "type": "string" },
+        "evidence": { "type": "string" }
+      }
+    }
+  }
+}

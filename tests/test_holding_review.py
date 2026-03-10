@@ -1,8 +1,13 @@
-"""Tests for holding_review module -- HOLD-01 through HOLD-05 + integration."""
+"""Tests for holding_review module -- HOLD-01 through HOLD-05, HOLD-06 CLI."""
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
+from edenfintech_scanner_bootstrap.cli import build_parser, main
 from edenfintech_scanner_bootstrap.holding_review import (
     FORWARD_HURDLE_PCT,
     MIN_YEARS_REMAINING,
@@ -332,6 +337,132 @@ class TestReviewHolding(unittest.TestCase):
         }
         result = review_holding(holding, current_price=30.0)
         self.assertEqual(result["thesis_integrity"]["overall_status"], "DEGRADED")
+
+
+# -- Shared CLI fixtures ------------------------------------------------------
+
+MANIFEST_HOLDING = {
+    "ticker": "TEST",
+    "purchase_price": 25.0,
+    "purchase_date": "2024-06-01",
+    "scan_date": "2024-06-01",
+    "current_weight_pct": 8.5,
+    "base_case_assumptions": BASE_CASE,
+    "worst_case_assumptions": WORST_CASE,
+    "probability_inputs": {"base_probability_pct": 60.0},
+    "dominant_risk_type": "execution",
+    "invalidation_triggers": TRIGGERS,
+}
+
+VALID_MANIFEST = {"holdings": [MANIFEST_HOLDING]}
+
+
+def _write_manifest(tmp: Path, manifest: dict | None = None) -> Path:
+    """Write a holdings manifest to a temp file and return the path."""
+    p = tmp / "holdings.json"
+    p.write_text(json.dumps(manifest or VALID_MANIFEST))
+    return p
+
+
+class TestHoldingsSchemaValidation(unittest.TestCase):
+    """Holdings manifest schema validates correctly."""
+
+    def test_valid_manifest_passes(self):
+        from edenfintech_scanner_bootstrap.assets import load_json, methodology_root
+        from edenfintech_scanner_bootstrap.schemas import validate_instance
+
+        schema = load_json(methodology_root() / "holdings.schema.json")
+        validate_instance(VALID_MANIFEST, schema)
+
+    def test_missing_ticker_fails(self):
+        from edenfintech_scanner_bootstrap.assets import load_json, methodology_root
+        from edenfintech_scanner_bootstrap.schemas import SchemaValidationError, validate_instance
+
+        schema = load_json(methodology_root() / "holdings.schema.json")
+        bad = {"holdings": [{k: v for k, v in MANIFEST_HOLDING.items() if k != "ticker"}]}
+        with self.assertRaises(SchemaValidationError):
+            validate_instance(bad, schema)
+
+
+class TestReviewHoldingCLI(unittest.TestCase):
+    """HOLD-06: review-holding CLI subcommand."""
+
+    def test_parser_accepts_review_holding(self):
+        parser = build_parser()
+        args = parser.parse_args(["review-holding", "TEST", "--holdings-path", "/tmp/h.json"])
+        self.assertEqual(args.command, "review-holding")
+        self.assertEqual(args.tickers, ["TEST"])
+        self.assertEqual(args.holdings_path, "/tmp/h.json")
+
+    def test_parser_multiple_tickers(self):
+        parser = build_parser()
+        args = parser.parse_args(["review-holding", "AAPL", "MSFT"])
+        self.assertEqual(args.tickers, ["AAPL", "MSFT"])
+
+    def test_parser_json_out(self):
+        parser = build_parser()
+        args = parser.parse_args(["review-holding", "TEST", "--json-out", "/tmp/out.json"])
+        self.assertEqual(args.json_out, "/tmp/out.json")
+
+    def test_missing_ticker_in_manifest_returns_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = _write_manifest(Path(tmp))
+            rc = main(["review-holding", "MISSING", "--holdings-path", str(manifest_path)])
+            self.assertEqual(rc, 1)
+
+    @patch("edenfintech_scanner_bootstrap.cli.FmpClient")
+    @patch("edenfintech_scanner_bootstrap.cli.load_config")
+    def test_successful_review_output_shape(self, mock_config, mock_fmp_cls):
+        """Happy path: mock FMP transport, verify JSON output shape."""
+        mock_config.return_value.fmp_api_key = "test-key"
+        mock_fmp_instance = mock_fmp_cls.return_value
+        mock_fmp_instance.quote.return_value = {"price": 35.0}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            manifest_path = _write_manifest(tmp_path)
+            out_path = tmp_path / "out.json"
+
+            rc = main([
+                "review-holding", "TEST",
+                "--holdings-path", str(manifest_path),
+                "--json-out", str(out_path),
+            ])
+            self.assertEqual(rc, 0)
+            result = json.loads(out_path.read_text())
+            # Single ticker returns single object
+            self.assertEqual(result["ticker"], "TEST")
+            self.assertIn("forward_refresh", result)
+            self.assertIn("sell_triggered", result)
+
+    @patch("edenfintech_scanner_bootstrap.cli.FmpClient")
+    @patch("edenfintech_scanner_bootstrap.cli.load_config")
+    def test_multiple_tickers_returns_array(self, mock_config, mock_fmp_cls):
+        """Multiple tickers produce array of review results."""
+        mock_config.return_value.fmp_api_key = "test-key"
+        mock_fmp_instance = mock_fmp_cls.return_value
+        mock_fmp_instance.quote.return_value = {"price": 35.0}
+
+        holding_b = {**MANIFEST_HOLDING, "ticker": "OTHER"}
+        manifest = {"holdings": [MANIFEST_HOLDING, holding_b]}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            manifest_path = _write_manifest(tmp_path, manifest)
+            out_path = tmp_path / "out.json"
+
+            rc = main([
+                "review-holding", "TEST", "OTHER",
+                "--holdings-path", str(manifest_path),
+                "--json-out", str(out_path),
+            ])
+            self.assertEqual(rc, 0)
+            result = json.loads(out_path.read_text())
+            self.assertIsInstance(result, list)
+            self.assertEqual(len(result), 2)
+            tickers = [r["ticker"] for r in result]
+            self.assertIn("TEST", tickers)
+            self.assertIn("OTHER", tickers)
 
 
 if __name__ == "__main__":
