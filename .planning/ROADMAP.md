@@ -46,10 +46,11 @@ Plans:
   1. `hydrate-sector "Consumer Defensive"` produces a validated JSON file at `data/sectors/consumer-defensive/knowledge.json` with per-sub-sector metrics, valuation approach, moat sources, and kill factors
   2. `sector-status` reports hydration dates per sector and flags sectors older than 180 days as stale
   3. `load_sector_knowledge()` returns structured sector data that passes schema validation and includes Gemini grounded search results
-**Plans**: TBD
+**Plans**: 2 plans (Wave 1 + Wave 2 sequential)
 
 Plans:
-- [ ] 02-01: Sector module, schema, and Gemini grounded search integration
+- [ ] 02-01-PLAN.md — Sector knowledge schema, test fixtures, and core sector module (storage, loading, freshness)
+- [ ] 02-02-PLAN.md — CLI commands (hydrate-sector, sector-status) and end-to-end integration verification
 
 ### Phase 3: Claude Analyst Agent
 **Goal**: An LLM agent fills all required structured analysis fields from raw evidence with per-field provenance and evidence citations
@@ -135,7 +136,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Infrastructure Foundation | 0/2 | Not started | - |
-| 2. Sector Knowledge Framework | 0/1 | Not started | - |
+| 2. Sector Knowledge Framework | 0/2 | Not started | - |
 | 3. Claude Analyst Agent | 0/1 | Not started | - |
 | 4. Review Agents | 0/2 | Not started | - |
 | 5. Automated Finalization | 0/1 | Not started | - |
