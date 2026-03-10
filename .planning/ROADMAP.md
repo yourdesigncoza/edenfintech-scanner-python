@@ -108,11 +108,11 @@ Plans:
   3. Each scan run writes a manifest file listing all processed tickers with pass/fail status
   4. 20% CAGR exception panel triggers unanimous 3-agent vote with full reasoning logged; non-unanimous results stay in pending_review
   5. Probability anchoring detection flags PROBABILITY_ANCHORING_SUSPECT when analyst assigns exactly 60% with friction-carrying risk type; evidence quality scoring adds methodology warning when concrete citations fall below threshold
-**Plans**: TBD
+**Plans**: 2 plans (Wave 1 + Wave 2 sequential)
 
 Plans:
-- [ ] 06-01: Individual and sector scan CLI commands
-- [ ] 06-02: Edge case hardening (CAGR exception, anchoring, evidence quality)
+- [ ] 06-01-PLAN.md — Hardening gates: CAGR exception panel, probability anchoring detection, evidence quality scoring
+- [ ] 06-02-PLAN.md — Scanner module (auto_scan, sector_scan), FMP stock_screener, CLI subcommands
 
 ### Phase 7: Holding Review
 **Goal**: Operator can review existing holdings for thesis integrity, sell triggers, and replacement opportunities using the full infrastructure
