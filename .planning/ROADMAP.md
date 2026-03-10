@@ -77,11 +77,11 @@ Plans:
   3. WEAK_EVIDENCE detection flags answers with vague citations lacking concrete sources; PCS laundering detection flags > 80% evidence source overlap with analyst
   4. Red-team validator answers 5 Codex questions as structured output and can REJECT an overlay with specific objections or APPROVE it
   5. Validator detects contradictions between analyst assumptions and raw FMP data (e.g., claimed revenue growth contradicted by 3-year decline in financials)
-**Plans**: TBD
+**Plans**: 2 plans (Wave 1 parallel)
 
 Plans:
-- [ ] 04-01: Epistemic reviewer agent
-- [ ] 04-02: Red-team validator agent
+- [ ] 04-01-PLAN.md — Epistemic reviewer with information barrier, PCS generation, and evidence quality detectors
+- [ ] 04-02-PLAN.md — Red-team validator with deterministic contradiction detection and APPROVE/REJECT verdicts
 
 ### Phase 5: Automated Finalization
 **Goal**: A single function call replaces the entire human review workflow — fetch, analyze, validate, review, and finalize without manual intervention
