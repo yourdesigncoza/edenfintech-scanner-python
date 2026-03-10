@@ -124,10 +124,11 @@ Plans:
   3. Sell triggers fire correctly: target reached with forward < 30% hurdle, rapid rerating + forward <10-15%/yr, thesis break from invalidation_triggers
   4. Replacement gate computes Gate A (forward CAGR delta > 15pp) and Gate B (downside profile equal or better) with appropriate flags
   5. Output includes fresh_capital_max_weight alongside current_weight for legacy vs fresh capital comparison
-**Plans**: TBD
+**Plans**: 2 plans (Wave 1 + Wave 2 sequential)
 
 Plans:
-- [ ] 07-01: Holding review module and CLI command
+- [ ] 07-01-PLAN.md — Core holding review module with TDD: forward refresh, thesis integrity, sell triggers, replacement gate, fresh capital weight
+- [ ] 07-02-PLAN.md — Holdings manifest schema and review-holding CLI command
 
 ## Progress
 
@@ -142,4 +143,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Review Agents | 1/2 | In Progress|  |
 | 5. Automated Finalization | 2/2 | Complete   | 2026-03-10 |
 | 6. Scan Modes and Hardening | 1/2 | In Progress|  |
-| 7. Holding Review | 0/1 | Not started | - |
+| 7. Holding Review | 0/2 | Not started | - |
