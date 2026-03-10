@@ -98,7 +98,13 @@
             "dominant_risk_type",
             "base_case",
             "worst_case",
-            "probability"
+            "probability",
+            "catalyst_stack",
+            "invalidation_triggers",
+            "decision_memo",
+            "issues_and_fixes",
+            "setup_pattern",
+            "stretch_case"
           ],
           "properties": {
             "margin_trend_gate": {
@@ -166,7 +172,75 @@
                 "threshold_proximity_warning": { "type": "string" }
               }
             },
-            "issues_and_fixes": { "type": "string" },
+            "catalyst_stack": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["type", "description", "timeline"],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["HARD", "MEDIUM", "SOFT"]
+                  },
+                  "description": { "type": "string" },
+                  "timeline": { "type": "string" }
+                }
+              }
+            },
+            "invalidation_triggers": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["trigger", "evidence"],
+                "properties": {
+                  "trigger": { "type": "string" },
+                  "evidence": { "type": "string" }
+                }
+              }
+            },
+            "decision_memo": {
+              "type": "object",
+              "required": ["better_than_peer", "safer_than_peer", "what_makes_wrong"],
+              "properties": {
+                "better_than_peer": { "type": "string" },
+                "safer_than_peer": { "type": "string" },
+                "what_makes_wrong": { "type": "string" }
+              }
+            },
+            "issues_and_fixes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["issue", "fix", "evidence_status"],
+                "properties": {
+                  "issue": { "type": "string" },
+                  "fix": { "type": "string" },
+                  "evidence_status": {
+                    "type": "string",
+                    "enum": ["ANNOUNCED_ONLY", "ACTION_UNDERWAY", "EARLY_RESULTS_VISIBLE", "PROVEN"]
+                  }
+                }
+              }
+            },
+            "setup_pattern": {
+              "type": "string",
+              "enum": ["SOLVENCY_SCARE", "QUALITY_FRANCHISE", "NARRATIVE_DISCOUNT", "NEW_OPERATOR", "OTHER"]
+            },
+            "stretch_case": {
+              "type": "object",
+              "required": ["revenue_b", "fcf_margin_pct", "multiple", "shares_m", "years"],
+              "properties": {
+                "revenue_b": { "type": "number" },
+                "fcf_margin_pct": { "type": "number" },
+                "multiple": { "type": "number" },
+                "shares_m": { "type": "number", "minimum": 0 },
+                "years": { "type": "number", "minimum": 0 },
+                "discount_path": { "type": "string" }
+              }
+            },
             "moat_assessment": { "type": "string" },
             "thesis_summary": { "type": "string" },
             "catalysts": {
