@@ -12,7 +12,7 @@ Transform the existing deterministic Python scanner into a fully automated LLM-p
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Infrastructure Foundation** - FMP caching layer and Codex-aligned schema enrichments with pipeline gates
+- [x] **Phase 1: Infrastructure Foundation** - FMP caching layer and Codex-aligned schema enrichments with pipeline gates (completed 2026-03-10)
 - [ ] **Phase 2: Sector Knowledge Framework** - Gemini grounded search sector hydration with storage, staleness tracking, and CLI
 - [ ] **Phase 3: Claude Analyst Agent** - LLM agent that fills structured analysis overlays from raw bundles and sector knowledge
 - [ ] **Phase 4: Review Agents** - Architecturally blind epistemic reviewer and adversarial red-team validator
@@ -135,7 +135,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Infrastructure Foundation | 0/2 | Not started | - |
+| 1. Infrastructure Foundation | 2/2 | Complete   | 2026-03-10 |
 | 2. Sector Knowledge Framework | 0/2 | Not started | - |
 | 3. Claude Analyst Agent | 0/1 | Not started | - |
 | 4. Review Agents | 0/2 | Not started | - |

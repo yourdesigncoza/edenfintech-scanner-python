@@ -16,14 +16,14 @@ Requirements for full integration. Each maps to roadmap phases.
 
 ### Schema
 
-- [ ] **SCHM-01**: `catalyst_stack[]` with typed entries (HARD/MEDIUM/SOFT + description + timeline)
-- [ ] **SCHM-02**: `invalidation_triggers[]` with falsifying evidence
-- [ ] **SCHM-03**: `decision_memo` (better_than_peer, safer_than_peer, what_makes_wrong)
-- [ ] **SCHM-04**: `issues_and_fixes[]` with evidence status enum (ANNOUNCED_ONLY/ACTION_UNDERWAY/EARLY_RESULTS_VISIBLE/PROVEN)
-- [ ] **SCHM-05**: `setup_pattern` enum (SOLVENCY_SCARE/QUALITY_FRANCHISE/NARRATIVE_DISCOUNT/NEW_OPERATOR/OTHER)
-- [ ] **SCHM-06**: `stretch_case` (same shape as base_case: bear/base/stretch per Codex 05-VALUATION.md)
-- [ ] **SCHM-07**: Pipeline gate rejects if catalyst_stack has zero HARD/MEDIUM entries
-- [ ] **SCHM-08**: Pipeline gate rejects if all issues_and_fixes are ANNOUNCED_ONLY
+- [x] **SCHM-01**: `catalyst_stack[]` with typed entries (HARD/MEDIUM/SOFT + description + timeline)
+- [x] **SCHM-02**: `invalidation_triggers[]` with falsifying evidence
+- [x] **SCHM-03**: `decision_memo` (better_than_peer, safer_than_peer, what_makes_wrong)
+- [x] **SCHM-04**: `issues_and_fixes[]` with evidence status enum (ANNOUNCED_ONLY/ACTION_UNDERWAY/EARLY_RESULTS_VISIBLE/PROVEN)
+- [x] **SCHM-05**: `setup_pattern` enum (SOLVENCY_SCARE/QUALITY_FRANCHISE/NARRATIVE_DISCOUNT/NEW_OPERATOR/OTHER)
+- [x] **SCHM-06**: `stretch_case` (same shape as base_case: bear/base/stretch per Codex 05-VALUATION.md)
+- [x] **SCHM-07**: Pipeline gate rejects if catalyst_stack has zero HARD/MEDIUM entries
+- [x] **SCHM-08**: Pipeline gate rejects if all issues_and_fixes are ANNOUNCED_ONLY
 
 ### Sector Knowledge
 
@@ -123,14 +123,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CACHE-02 | Phase 1 | Complete |
 | CACHE-03 | Phase 1 | Complete |
 | CACHE-04 | Phase 1 | Complete |
-| SCHM-01 | Phase 1 | Pending |
-| SCHM-02 | Phase 1 | Pending |
-| SCHM-03 | Phase 1 | Pending |
-| SCHM-04 | Phase 1 | Pending |
-| SCHM-05 | Phase 1 | Pending |
-| SCHM-06 | Phase 1 | Pending |
-| SCHM-07 | Phase 1 | Pending |
-| SCHM-08 | Phase 1 | Pending |
+| SCHM-01 | Phase 1 | Complete |
+| SCHM-02 | Phase 1 | Complete |
+| SCHM-03 | Phase 1 | Complete |
+| SCHM-04 | Phase 1 | Complete |
+| SCHM-05 | Phase 1 | Complete |
+| SCHM-06 | Phase 1 | Complete |
+| SCHM-07 | Phase 1 | Complete |
+| SCHM-08 | Phase 1 | Complete |
 | SECT-01 | Phase 2 | Complete |
 | SECT-02 | Phase 2 | Complete |
 | SECT-03 | Phase 2 | Complete |
