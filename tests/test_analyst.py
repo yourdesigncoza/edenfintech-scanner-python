@@ -16,11 +16,13 @@ from pathlib import Path
 from edenfintech_scanner_bootstrap.analyst import (
     ClaudeAnalystClient,
     _build_candidate_output_schema,
+    _build_user_prompt,
     _extract_evidence_snippets,
     _post_validate,
     _strip_unsupported_constraints,
     generate_llm_analysis_draft,
 )
+from edenfintech_scanner_bootstrap.structured_analysis import _candidate_evidence_context
 from edenfintech_scanner_bootstrap.assets import load_json
 from edenfintech_scanner_bootstrap.structured_analysis import validate_structured_analysis
 
@@ -280,6 +282,83 @@ class TestAnalystAgent(unittest.TestCase):
                 '{"worst_case": 1, "base_case": 2}',
             )
         self.assertIn("__REQUIRED__", str(ctx.exception))
+
+
+class TestValidatorObjectionInjection(unittest.TestCase):
+    """Tests for validator objection injection into analyst prompt."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.raw_bundle = load_json(RAW_BUNDLE_FIXTURE)
+        cls.raw_candidate = cls.raw_bundle["raw_candidates"][0]
+        cls.evidence_context = _candidate_evidence_context(cls.raw_candidate)
+        cls.evidence_snippets = _extract_evidence_snippets(cls.raw_candidate)
+
+    def test_no_objections_produces_no_objection_section(self):
+        prompt = _build_user_prompt(
+            self.raw_candidate, self.evidence_context, self.evidence_snippets,
+            validator_objections=None,
+        )
+        self.assertNotIn("VALIDATOR OBJECTIONS", prompt)
+
+    def test_objections_appended_to_prompt(self):
+        objections = [
+            {"question": "Is FCF sustainable?", "objection": "Margin compression likely"},
+        ]
+        prompt = _build_user_prompt(
+            self.raw_candidate, self.evidence_context, self.evidence_snippets,
+            validator_objections=objections,
+        )
+        self.assertIn("VALIDATOR OBJECTIONS", prompt)
+        self.assertIn("Is FCF sustainable?", prompt)
+        self.assertIn("Margin compression likely", prompt)
+        self.assertIn("Revise your analysis to address each objection explicitly.", prompt)
+
+    def test_analyze_accepts_validator_objections(self):
+        captured_payloads = []
+
+        def capturing_transport(request_payload: dict) -> dict:
+            captured_payloads.append(request_payload)
+            raw_text = LLM_RESPONSE_FIXTURE.read_text()
+            return {"text": raw_text, "stop_reason": "end_turn"}
+
+        client = ClaudeAnalystClient("test-key", transport=capturing_transport)
+        objections = [{"question": "Revenue growth?", "objection": "Stalled"}]
+        client.analyze(self.raw_candidate, validator_objections=objections)
+        self.assertEqual(len(captured_payloads), 1)
+        user_content = captured_payloads[0]["messages"][0]["content"]
+        self.assertIn("VALIDATOR OBJECTIONS", user_content)
+        self.assertIn("Revenue growth?", user_content)
+
+    def test_generate_llm_analysis_draft_passes_objections(self):
+        captured_payloads = []
+
+        def capturing_transport(request_payload: dict) -> dict:
+            captured_payloads.append(request_payload)
+            raw_text = LLM_RESPONSE_FIXTURE.read_text()
+            return {"text": raw_text, "stop_reason": "end_turn"}
+
+        client = ClaudeAnalystClient("test-key", transport=capturing_transport)
+        objections = [{"question": "Moat durability?", "objection": "Weak barrier"}]
+        generate_llm_analysis_draft(
+            self.raw_bundle, client=client, validator_objections=objections,
+        )
+        self.assertEqual(len(captured_payloads), 1)
+        user_content = captured_payloads[0]["messages"][0]["content"]
+        self.assertIn("Moat durability?", user_content)
+
+    def test_analyze_without_objections_no_section(self):
+        captured_payloads = []
+
+        def capturing_transport(request_payload: dict) -> dict:
+            captured_payloads.append(request_payload)
+            raw_text = LLM_RESPONSE_FIXTURE.read_text()
+            return {"text": raw_text, "stop_reason": "end_turn"}
+
+        client = ClaudeAnalystClient("test-key", transport=capturing_transport)
+        client.analyze(self.raw_candidate)
+        user_content = captured_payloads[0]["messages"][0]["content"]
+        self.assertNotIn("VALIDATOR OBJECTIONS", user_content)
 
 
 if __name__ == "__main__":
