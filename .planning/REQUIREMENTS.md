@@ -9,9 +9,9 @@ Requirements for full integration. Each maps to roadmap phases.
 
 ### Caching
 
-- [ ] **CACHE-01**: FMP responses cached per-endpoint per-ticker with configurable TTLs (price-history 1d, screener/ratios/metrics/ev 7d, profile/peers 30d, financials 90d)
-- [ ] **CACHE-02**: `--fresh` flag bypasses cache for individual calls
-- [ ] **CACHE-03**: Empty/error responses never cached
+- [x] **CACHE-01**: FMP responses cached per-endpoint per-ticker with configurable TTLs (price-history 1d, screener/ratios/metrics/ev 7d, profile/peers 30d, financials 90d)
+- [x] **CACHE-02**: `--fresh` flag bypasses cache for individual calls
+- [x] **CACHE-03**: Empty/error responses never cached
 - [x] **CACHE-04**: CLI commands `cache-status` and `cache-clear`
 
 ### Schema
@@ -119,9 +119,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CACHE-01 | Phase 8 | Pending |
-| CACHE-02 | Phase 8 | Pending |
-| CACHE-03 | Phase 8 | Pending |
+| CACHE-01 | Phase 8 | Complete |
+| CACHE-02 | Phase 8 | Complete |
+| CACHE-03 | Phase 8 | Complete |
 | CACHE-04 | Phase 1 | Complete |
 | SCHM-01 | Phase 1 | Complete |
 | SCHM-02 | Phase 1 | Complete |

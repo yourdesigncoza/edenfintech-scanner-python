@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Automated Finalization** - End-to-end orchestration wiring analyst, validator, and epistemic reviewer with retry loop (completed 2026-03-10)
 - [ ] **Phase 6: Scan Modes and Hardening** - Individual and sector scan commands plus bias detection and evidence quality gates
 - [x] **Phase 7: Holding Review** - Forward return refresh, thesis integrity, sell triggers, and replacement gate computation (completed 2026-03-10)
-- [ ] **Phase 8: Wire FMP Cache into Auto-Scan Paths** - Thread cache layer through auto_analyze and scanner orchestrators (gap closure)
+- [x] **Phase 8: Wire FMP Cache into Auto-Scan Paths** - Thread cache layer through auto_analyze and scanner orchestrators (gap closure) (completed 2026-03-10)
 
 ## Phase Details
 
@@ -160,4 +160,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Automated Finalization | 2/2 | Complete   | 2026-03-10 |
 | 6. Scan Modes and Hardening | 1/2 | In Progress|  |
 | 7. Holding Review | 2/2 | Complete   | 2026-03-10 |
-| 8. Wire FMP Cache into Auto-Scan | 0/1 | Pending    |  |
+| 8. Wire FMP Cache into Auto-Scan | 1/1 | Complete   | 2026-03-10 |
