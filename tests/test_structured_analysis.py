@@ -7,7 +7,10 @@ from pathlib import Path
 
 from edenfintech_scanner_bootstrap.assets import load_json
 from edenfintech_scanner_bootstrap.structured_analysis import (
+    FINAL_PROVENANCE_STATUSES,
+    apply_structured_analysis,
     finalize_structured_analysis,
+    review_structured_analysis,
     structured_analysis_template,
 )
 
@@ -108,6 +111,79 @@ class StructuredAnalysisFinalizationTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "cannot finalize .* without review_note"):
             finalize_structured_analysis(draft, reviewer="Analyst One")
+
+
+def _llm_draft_overlay() -> dict:
+    """Create a review-ready overlay with LLM_DRAFT provenance status."""
+    payload = _review_ready_overlay()
+    candidate = payload["structured_candidates"][0]
+    for provenance in candidate["field_provenance"]:
+        provenance["status"] = "LLM_DRAFT"
+    return payload
+
+
+class TestLLMFinalization(unittest.TestCase):
+    """Tests for LLM-automated finalization with LLM_CONFIRMED and LLM_EDITED statuses."""
+
+    def test_llm_confirmed_in_final_statuses(self) -> None:
+        self.assertIn("LLM_CONFIRMED", FINAL_PROVENANCE_STATUSES)
+
+    def test_llm_edited_in_final_statuses(self) -> None:
+        self.assertIn("LLM_EDITED", FINAL_PROVENANCE_STATUSES)
+
+    def test_finalize_with_llm_confirmed_converts_llm_draft(self) -> None:
+        draft = _llm_draft_overlay()
+        finalized = finalize_structured_analysis(
+            draft, reviewer="llm:claude-sonnet-4-5-20250514", final_status="LLM_CONFIRMED",
+        )
+        self.assertEqual(finalized["completion_status"], "FINALIZED")
+        statuses = {item["status"] for item in finalized["structured_candidates"][0]["field_provenance"]}
+        self.assertEqual(statuses, {"LLM_CONFIRMED"})
+        self.assertEqual(finalized["finalization_metadata"]["provenance_transition_status"], "LLM_CONFIRMED")
+
+    def test_finalize_with_llm_edited_converts_llm_draft(self) -> None:
+        draft = _llm_draft_overlay()
+        finalized = finalize_structured_analysis(
+            draft, reviewer="llm:claude-sonnet-4-5-20250514", final_status="LLM_EDITED",
+        )
+        statuses = {item["status"] for item in finalized["structured_candidates"][0]["field_provenance"]}
+        self.assertEqual(statuses, {"LLM_EDITED"})
+
+    def test_finalize_with_llm_reviewer_format_succeeds(self) -> None:
+        draft = _llm_draft_overlay()
+        finalized = finalize_structured_analysis(
+            draft, reviewer="llm:claude-sonnet-4-5-20250514", final_status="LLM_CONFIRMED",
+        )
+        self.assertEqual(finalized["finalization_metadata"]["reviewer"], "llm:claude-sonnet-4-5-20250514")
+
+    def test_apply_accepts_llm_confirmed_provenance(self) -> None:
+        draft = _llm_draft_overlay()
+        finalized = finalize_structured_analysis(
+            draft, reviewer="llm:claude-sonnet-4-5-20250514", final_status="LLM_CONFIRMED",
+        )
+        raw_bundle = load_json(FIXTURE_PATH)
+        merged = apply_structured_analysis(raw_bundle, finalized)
+        self.assertIn("raw_candidates", merged)
+
+    def test_apply_accepts_llm_edited_provenance(self) -> None:
+        draft = _llm_draft_overlay()
+        finalized = finalize_structured_analysis(
+            draft, reviewer="llm:claude-sonnet-4-5-20250514", final_status="LLM_EDITED",
+        )
+        raw_bundle = load_json(FIXTURE_PATH)
+        merged = apply_structured_analysis(raw_bundle, finalized)
+        self.assertIn("raw_candidates", merged)
+
+    def test_review_counts_llm_confirmed_and_llm_edited(self) -> None:
+        draft = _llm_draft_overlay()
+        finalized = finalize_structured_analysis(
+            draft, reviewer="llm:claude-sonnet-4-5-20250514", final_status="LLM_CONFIRMED",
+        )
+        report = review_structured_analysis(finalized)
+        self.assertIn("llm_confirmed", report["summary"])
+        self.assertIn("llm_edited", report["summary"])
+        self.assertGreater(report["summary"]["llm_confirmed"], 0)
+        self.assertEqual(report["summary"]["llm_edited"], 0)
 
 
 if __name__ == "__main__":
