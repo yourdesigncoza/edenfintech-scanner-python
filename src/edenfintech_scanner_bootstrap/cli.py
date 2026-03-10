@@ -10,7 +10,7 @@ from .cache import FmpCacheStore, cached_transport
 from .config import discover_project_root, load_config
 from .field_generation import build_structured_analysis_draft_file
 from .fmp import build_fmp_bundle_with_config, write_fmp_bundle
-from .gemini import build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
+from .gemini import GeminiClient, build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
 from .importers import build_scan_input_file, load_raw_scan_template_text
 from .judge import run_judge_file
 from .live_scan import run_live_scan
@@ -23,6 +23,7 @@ from .structured_analysis import (
     review_structured_analysis_file,
     suggest_review_notes_file,
 )
+from .sector import check_sector_freshness, hydrate_sector, _load_registry, _slugify
 from .validation import validate_assets
 
 
@@ -315,6 +316,65 @@ def _cmd_run_live_scan(
     return 0
 
 
+def _cmd_hydrate_sector(sector_name: str, sub_sectors: list[str] | None, model: str | None) -> int:
+    config = load_config()
+    config.require("gemini_api_key")
+    kwargs: dict = {}
+    if model:
+        kwargs["model"] = model
+    client = GeminiClient(config.gemini_api_key, **kwargs)
+    try:
+        result = hydrate_sector(
+            sector_name,
+            sub_sectors=sub_sectors,
+            client=client,
+            config=config,
+        )
+    except (ValueError, Exception) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    slug = _slugify(sector_name)
+    root = discover_project_root() or Path.cwd()
+    knowledge_path = root / "data" / "sectors" / slug / "knowledge.json"
+    print(f"Hydrated sector '{sector_name}' -> {knowledge_path}")
+    return 0
+
+
+def _cmd_sector_status(sector_name_filter: str | None) -> int:
+    root = discover_project_root() or Path.cwd()
+    registry = _load_registry(root)
+    sectors = registry.get("sectors", {})
+
+    if sector_name_filter:
+        slug = _slugify(sector_name_filter)
+        if slug in sectors:
+            sectors = {slug: sectors[slug]}
+        else:
+            # Check freshness which handles NOT_HYDRATED
+            result = check_sector_freshness(sector_name_filter, project_root=root)
+            print(f"{'Sector':<30} {'Hydrated':<25} {'Age (days)':<12} {'Status'}")
+            print("-" * 80)
+            print(f"{sector_name_filter:<30} {'---':<25} {'---':<12} {result['status']}")
+            return 0
+
+    print(f"{'Sector':<30} {'Hydrated':<25} {'Age (days)':<12} {'Status'}")
+    print("-" * 80)
+
+    if not sectors:
+        print("No hydrated sectors found.")
+        return 0
+
+    for slug, entry in sorted(sectors.items()):
+        sector_name = entry["sector_name"]
+        result = check_sector_freshness(sector_name, project_root=root)
+        hydrated_at = result.get("hydrated_at", "---")
+        age_days = result.get("age_days", "---")
+        status = result["status"]
+        print(f"{sector_name:<30} {str(hydrated_at):<25} {str(age_days):<12} {status}")
+
+    return 0
+
+
 def _cmd_build_review_package(
     tickers: list[str],
     out_dir: str,
@@ -455,6 +515,14 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("cache-status")
     subparsers.add_parser("cache-clear")
 
+    hydrate_sector_p = subparsers.add_parser("hydrate-sector")
+    hydrate_sector_p.add_argument("sector_name")
+    hydrate_sector_p.add_argument("--sub-sectors", nargs="+", help="Override sub-sector list")
+    hydrate_sector_p.add_argument("--model", default=None, help="Gemini model override")
+
+    sector_status_p = subparsers.add_parser("sector-status")
+    sector_status_p.add_argument("--sector", default=None, help="Check specific sector")
+
     subparsers.add_parser("show-scan-template")
     subparsers.add_parser("show-raw-scan-template")
     subparsers.add_parser("show-scan-schema")
@@ -548,6 +616,10 @@ def main(argv: list[str] | None = None) -> int:
             args.gemini_model,
             fresh=args.fresh,
         )
+    if args.command == "hydrate-sector":
+        return _cmd_hydrate_sector(args.sector_name, args.sub_sectors, args.model)
+    if args.command == "sector-status":
+        return _cmd_sector_status(args.sector)
     if args.command == "show-scan-schema":
         return _cmd_show_scan_schema()
     if args.command == "show-gemini-schema":
