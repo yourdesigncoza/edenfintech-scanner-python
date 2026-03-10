@@ -77,11 +77,11 @@ Requirements for full integration. Each maps to roadmap phases.
 
 ### Holding Review
 
-- [ ] **HOLD-01**: Forward return refresh — recompute target price and forward CAGR from current price + original valuation inputs
-- [ ] **HOLD-02**: Thesis integrity checklist — improved, degraded, unchanged, invalidated (matched against invalidation_triggers)
-- [ ] **HOLD-03**: Sell trigger evaluation — target reached + forward <30% hurdle; rapid rerating + forward <10-15%/yr; thesis break
-- [ ] **HOLD-04**: Replacement gate computation — Gate A: forward CAGR delta >15pp; Gate B: downside profile equal or better
-- [ ] **HOLD-05**: Fresh-capital vs legacy weight tracking (current_weight vs fresh_capital_max_weight)
+- [x] **HOLD-01**: Forward return refresh — recompute target price and forward CAGR from current price + original valuation inputs
+- [x] **HOLD-02**: Thesis integrity checklist — improved, degraded, unchanged, invalidated (matched against invalidation_triggers)
+- [x] **HOLD-03**: Sell trigger evaluation — target reached + forward <30% hurdle; rapid rerating + forward <10-15%/yr; thesis break
+- [x] **HOLD-04**: Replacement gate computation — Gate A: forward CAGR delta >15pp; Gate B: downside profile equal or better
+- [x] **HOLD-05**: Fresh-capital vs legacy weight tracking (current_weight vs fresh_capital_max_weight)
 - [ ] **HOLD-06**: CLI command `review-holding TICKER [TICKER...]`
 
 ## v2 Requirements
@@ -160,11 +160,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HARD-01 | Phase 6 | Complete |
 | HARD-02 | Phase 6 | Complete |
 | HARD-03 | Phase 6 | Complete |
-| HOLD-01 | Phase 7 | Pending |
-| HOLD-02 | Phase 7 | Pending |
-| HOLD-03 | Phase 7 | Pending |
-| HOLD-04 | Phase 7 | Pending |
-| HOLD-05 | Phase 7 | Pending |
+| HOLD-01 | Phase 7 | Complete |
+| HOLD-02 | Phase 7 | Complete |
+| HOLD-03 | Phase 7 | Complete |
+| HOLD-04 | Phase 7 | Complete |
+| HOLD-05 | Phase 7 | Complete |
 | HOLD-06 | Phase 7 | Pending |
 
 **Coverage:**
