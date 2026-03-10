@@ -525,20 +525,24 @@ class TestSectorScan(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestCliDispatch(unittest.TestCase):
-    @patch("edenfintech_scanner_bootstrap.scanner.auto_scan")
+    @patch("edenfintech_scanner_bootstrap.cli.auto_scan")
     @patch("edenfintech_scanner_bootstrap.cli.load_config")
     def test_cmd_auto_scan(self, mock_config, mock_auto_scan):
         from edenfintech_scanner_bootstrap.cli import main
         from edenfintech_scanner_bootstrap.scanner import ScanResult
 
         mock_config.return_value = _make_config()
+        manifest_path = Path(tempfile.mkdtemp()) / "manifest.json"
+        manifest_path.write_text(json.dumps({
+            "summary": {"total": 1, "pass": 1, "fail": 0, "error": 0, "pending_review": 0},
+        }))
         mock_auto_scan.return_value = ScanResult(
             scan_id="test-id",
             scan_type="auto-scan",
             sector=None,
             tickers_processed=["AAPL"],
             results={},
-            manifest_path=Path("/tmp/manifest.json"),
+            manifest_path=manifest_path,
         )
 
         result = main(["auto-scan", "AAPL"])
@@ -546,20 +550,24 @@ class TestCliDispatch(unittest.TestCase):
         call_kwargs = mock_auto_scan.call_args
         self.assertIn("AAPL", call_kwargs[0][0] if call_kwargs[0] else call_kwargs[1].get("tickers", []))
 
-    @patch("edenfintech_scanner_bootstrap.scanner.sector_scan")
+    @patch("edenfintech_scanner_bootstrap.cli.sector_scan")
     @patch("edenfintech_scanner_bootstrap.cli.load_config")
     def test_cmd_sector_scan(self, mock_config, mock_sector_scan):
         from edenfintech_scanner_bootstrap.cli import main
         from edenfintech_scanner_bootstrap.scanner import ScanResult
 
         mock_config.return_value = _make_config()
+        manifest_path = Path(tempfile.mkdtemp()) / "manifest.json"
+        manifest_path.write_text(json.dumps({
+            "summary": {"total": 1, "pass": 1, "fail": 0, "error": 0, "pending_review": 0},
+        }))
         mock_sector_scan.return_value = ScanResult(
             scan_id="test-id",
             scan_type="sector-scan",
             sector="Consumer Defensive",
             tickers_processed=["KO"],
             results={},
-            manifest_path=Path("/tmp/manifest.json"),
+            manifest_path=manifest_path,
         )
 
         result = main(["sector-scan", "Consumer Defensive"])

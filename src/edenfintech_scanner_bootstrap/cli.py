@@ -24,6 +24,7 @@ from .structured_analysis import (
     review_structured_analysis_file,
     suggest_review_notes_file,
 )
+from .scanner import auto_scan, sector_scan
 from .sector import check_sector_freshness, hydrate_sector, _load_registry, _slugify
 from .validation import validate_assets
 
@@ -431,6 +432,49 @@ def _cmd_build_review_package(
     return 0
 
 
+def _cmd_auto_scan(tickers: list[str], out_dir: str | None, fresh: bool = False) -> int:
+    config = load_config()
+    config.require("fmp_api_key", "anthropic_api_key")
+    result = auto_scan(
+        tickers,
+        config=config,
+        out_dir=Path(out_dir) if out_dir else None,
+    )
+    summary = result.manifest_path.read_text() if result.manifest_path.exists() else "{}"
+    manifest = json.loads(summary)
+    s = manifest.get("summary", {})
+    print(f"Auto-scan complete: {s.get('total', 0)} tickers scanned")
+    print(f"  PASS: {s.get('pass', 0)}  FAIL: {s.get('fail', 0)}  ERROR: {s.get('error', 0)}  PENDING: {s.get('pending_review', 0)}")
+    print(f"  Manifest: {result.manifest_path}")
+    return 0
+
+
+def _cmd_sector_scan(
+    sector_name: str,
+    out_dir: str | None,
+    max_workers: int,
+    exclude_industry: list[str] | None,
+    fresh: bool = False,
+) -> int:
+    config = load_config()
+    config.require("fmp_api_key", "anthropic_api_key", "gemini_api_key")
+    result = sector_scan(
+        sector_name,
+        config=config,
+        out_dir=Path(out_dir) if out_dir else None,
+        max_workers=max_workers,
+        excluded_industries=exclude_industry,
+    )
+    summary = result.manifest_path.read_text() if result.manifest_path.exists() else "{}"
+    manifest = json.loads(summary)
+    s = manifest.get("summary", {})
+    print(f"Sector scan complete: {sector_name}")
+    print(f"  Tickers found: {s.get('total', 0)}")
+    print(f"  PASS: {s.get('pass', 0)}  FAIL: {s.get('fail', 0)}  ERROR: {s.get('error', 0)}  PENDING: {s.get('pending_review', 0)}")
+    print(f"  Manifest: {result.manifest_path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate EdenFinTech Python bootstrap assets")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -548,6 +592,18 @@ def build_parser() -> argparse.ArgumentParser:
     sector_status_p = subparsers.add_parser("sector-status")
     sector_status_p.add_argument("--sector", default=None, help="Check specific sector")
 
+    auto_scan_p = subparsers.add_parser("auto-scan")
+    auto_scan_p.add_argument("tickers", nargs="+")
+    auto_scan_p.add_argument("--out-dir", default=None)
+    auto_scan_p.add_argument("--fresh", action="store_true", help="Bypass cache")
+
+    sector_scan_p = subparsers.add_parser("sector-scan")
+    sector_scan_p.add_argument("sector_name")
+    sector_scan_p.add_argument("--out-dir", default=None)
+    sector_scan_p.add_argument("--max-workers", type=int, default=3)
+    sector_scan_p.add_argument("--exclude-industry", nargs="*", help="Industries to exclude")
+    sector_scan_p.add_argument("--fresh", action="store_true", help="Bypass cache")
+
     subparsers.add_parser("show-scan-template")
     subparsers.add_parser("show-raw-scan-template")
     subparsers.add_parser("show-scan-schema")
@@ -648,6 +704,13 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_hydrate_sector(args.sector_name, args.sub_sectors, args.model)
     if args.command == "sector-status":
         return _cmd_sector_status(args.sector)
+    if args.command == "auto-scan":
+        return _cmd_auto_scan(args.tickers, args.out_dir, fresh=args.fresh)
+    if args.command == "sector-scan":
+        return _cmd_sector_scan(
+            args.sector_name, args.out_dir, args.max_workers,
+            args.exclude_industry, fresh=args.fresh,
+        )
     if args.command == "show-scan-schema":
         return _cmd_show_scan_schema()
     if args.command == "show-gemini-schema":
