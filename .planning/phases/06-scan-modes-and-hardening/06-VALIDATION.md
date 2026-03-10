@@ -2,8 +2,8 @@
 phase: 6
 slug: scan-modes-and-hardening
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-10
 ---
 
@@ -36,23 +36,20 @@ created: 2026-03-10
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 06-01-01 | 01 | 1 | SCAN-01 | unit | `python -m unittest tests.test_scanner.TestAutoScan -v` | ❌ W0 | ⬜ pending |
-| 06-01-02 | 01 | 1 | SCAN-02 | unit | `python -m unittest tests.test_scanner.TestSectorScan -v` | ❌ W0 | ⬜ pending |
-| 06-01-03 | 01 | 1 | SCAN-03 | unit | `python -m unittest tests.test_scanner.TestScanManifest -v` | ❌ W0 | ⬜ pending |
-| 06-02-01 | 02 | 2 | HARD-01 | unit | `python -m unittest tests.test_hardening.TestCagrExceptionPanel -v` | ❌ W0 | ⬜ pending |
-| 06-02-02 | 02 | 2 | HARD-02 | unit | `python -m unittest tests.test_hardening.TestProbabilityAnchoring -v` | ❌ W0 | ⬜ pending |
-| 06-02-03 | 02 | 2 | HARD-03 | unit | `python -m unittest tests.test_hardening.TestEvidenceQuality -v` | ❌ W0 | ⬜ pending |
+| Task ID | Plan | Wave | Requirement | Test Type | Automated Command | Status |
+|---------|------|------|-------------|-----------|-------------------|--------|
+| 06-01-01 | 01 | 1 | HARD-02 | unit | `python -m unittest tests.test_hardening.TestProbabilityAnchoring tests.test_hardening.TestEvidenceQuality -v` | pending |
+| 06-01-02 | 01 | 1 | HARD-01, HARD-03 | unit | `python -m unittest tests.test_hardening.TestCagrExceptionPanel -v` | pending |
+| 06-02-01 | 02 | 2 | SCAN-01, SCAN-02, SCAN-03 | unit | `python -m unittest tests.test_scanner -v` | pending |
+| 06-02-02 | 02 | 2 | SCAN-01, SCAN-02 | unit + smoke | `python -m unittest tests.test_scanner.TestCliDispatch -v` | pending |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: pending / green / red / flaky*
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `tests/test_scanner.py` — stubs for SCAN-01, SCAN-02, SCAN-03
-- [ ] `tests/test_hardening.py` — stubs for HARD-01, HARD-02, HARD-03
+No Wave 0 stubs needed. Both plans use `tdd="true"` tasks that create test files as part of the RED phase of TDD execution. Test files (`tests/test_hardening.py`, `tests/test_scanner.py`) are created inline by their respective plan tasks.
 
 *Existing infrastructure (unittest discover, fixtures/) covers framework needs.*
 
@@ -66,11 +63,11 @@ created: 2026-03-10
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify commands
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 — not applicable (TDD tasks create tests inline)
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s
+- [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** pending
