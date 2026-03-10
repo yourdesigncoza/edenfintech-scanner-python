@@ -92,10 +92,11 @@ Plans:
   2. When the validator rejects an overlay, the analyst re-runs with validator objections injected (up to 2 retries), then proceeds to epistemic review
   3. Finalized overlays carry provenance status `LLM_CONFIRMED` and `finalize_structured_analysis()` accepts `reviewer="llm:<model-id>"`
   4. The finalized overlay passes all existing pipeline validation and can be consumed by `apply_structured_analysis()` identically to a human-produced overlay
-**Plans**: TBD
+**Plans**: 2 plans (Wave 1 + Wave 2 sequential)
 
 Plans:
-- [ ] 05-01: Automation orchestrator and provenance lifecycle
+- [ ] 05-01-PLAN.md — Provenance lifecycle extension (LLM_CONFIRMED) and analyst objection injection
+- [ ] 05-02-PLAN.md — Automation orchestrator with auto_analyze() and retry loop
 
 ### Phase 6: Scan Modes and Hardening
 **Goal**: Operator can scan individual tickers or entire sectors from the CLI, with bias detection and evidence quality gates preventing unchecked LLM optimism
@@ -139,6 +140,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 2. Sector Knowledge Framework | 2/2 | Complete   | 2026-03-10 |
 | 3. Claude Analyst Agent | 1/1 | Complete   | 2026-03-10 |
 | 4. Review Agents | 1/2 | In Progress|  |
-| 5. Automated Finalization | 0/1 | Not started | - |
+| 5. Automated Finalization | 0/2 | Not started | - |
 | 6. Scan Modes and Hardening | 0/2 | Not started | - |
 | 7. Holding Review | 0/1 | Not started | - |
