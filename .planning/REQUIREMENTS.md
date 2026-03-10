@@ -119,59 +119,59 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CACHE-01 | — | Pending |
-| CACHE-02 | — | Pending |
-| CACHE-03 | — | Pending |
-| CACHE-04 | — | Pending |
-| SCHM-01 | — | Pending |
-| SCHM-02 | — | Pending |
-| SCHM-03 | — | Pending |
-| SCHM-04 | — | Pending |
-| SCHM-05 | — | Pending |
-| SCHM-06 | — | Pending |
-| SCHM-07 | — | Pending |
-| SCHM-08 | — | Pending |
-| SECT-01 | — | Pending |
-| SECT-02 | — | Pending |
-| SECT-03 | — | Pending |
-| SECT-04 | — | Pending |
-| SECT-05 | — | Pending |
-| AGNT-01 | — | Pending |
-| AGNT-02 | — | Pending |
-| AGNT-03 | — | Pending |
-| AGNT-04 | — | Pending |
-| AGNT-05 | — | Pending |
-| EPST-01 | — | Pending |
-| EPST-02 | — | Pending |
-| EPST-03 | — | Pending |
-| EPST-04 | — | Pending |
-| EPST-05 | — | Pending |
-| EPST-06 | — | Pending |
-| VALD-01 | — | Pending |
-| VALD-02 | — | Pending |
-| VALD-03 | — | Pending |
-| AUTO-01 | — | Pending |
-| AUTO-02 | — | Pending |
-| AUTO-03 | — | Pending |
-| AUTO-04 | — | Pending |
-| SCAN-01 | — | Pending |
-| SCAN-02 | — | Pending |
-| SCAN-03 | — | Pending |
-| HARD-01 | — | Pending |
-| HARD-02 | — | Pending |
-| HARD-03 | — | Pending |
-| HOLD-01 | — | Pending |
-| HOLD-02 | — | Pending |
-| HOLD-03 | — | Pending |
-| HOLD-04 | — | Pending |
-| HOLD-05 | — | Pending |
-| HOLD-06 | — | Pending |
+| CACHE-01 | Phase 1 | Pending |
+| CACHE-02 | Phase 1 | Pending |
+| CACHE-03 | Phase 1 | Pending |
+| CACHE-04 | Phase 1 | Pending |
+| SCHM-01 | Phase 1 | Pending |
+| SCHM-02 | Phase 1 | Pending |
+| SCHM-03 | Phase 1 | Pending |
+| SCHM-04 | Phase 1 | Pending |
+| SCHM-05 | Phase 1 | Pending |
+| SCHM-06 | Phase 1 | Pending |
+| SCHM-07 | Phase 1 | Pending |
+| SCHM-08 | Phase 1 | Pending |
+| SECT-01 | Phase 2 | Pending |
+| SECT-02 | Phase 2 | Pending |
+| SECT-03 | Phase 2 | Pending |
+| SECT-04 | Phase 2 | Pending |
+| SECT-05 | Phase 2 | Pending |
+| AGNT-01 | Phase 3 | Pending |
+| AGNT-02 | Phase 3 | Pending |
+| AGNT-03 | Phase 3 | Pending |
+| AGNT-04 | Phase 3 | Pending |
+| AGNT-05 | Phase 3 | Pending |
+| EPST-01 | Phase 4 | Pending |
+| EPST-02 | Phase 4 | Pending |
+| EPST-03 | Phase 4 | Pending |
+| EPST-04 | Phase 4 | Pending |
+| EPST-05 | Phase 4 | Pending |
+| EPST-06 | Phase 4 | Pending |
+| VALD-01 | Phase 4 | Pending |
+| VALD-02 | Phase 4 | Pending |
+| VALD-03 | Phase 4 | Pending |
+| AUTO-01 | Phase 5 | Pending |
+| AUTO-02 | Phase 5 | Pending |
+| AUTO-03 | Phase 5 | Pending |
+| AUTO-04 | Phase 5 | Pending |
+| SCAN-01 | Phase 6 | Pending |
+| SCAN-02 | Phase 6 | Pending |
+| SCAN-03 | Phase 6 | Pending |
+| HARD-01 | Phase 6 | Pending |
+| HARD-02 | Phase 6 | Pending |
+| HARD-03 | Phase 6 | Pending |
+| HOLD-01 | Phase 7 | Pending |
+| HOLD-02 | Phase 7 | Pending |
+| HOLD-03 | Phase 7 | Pending |
+| HOLD-04 | Phase 7 | Pending |
+| HOLD-05 | Phase 7 | Pending |
+| HOLD-06 | Phase 7 | Pending |
 
 **Coverage:**
 - v1 requirements: 47 total
-- Mapped to phases: 0
-- Unmapped: 47 ⚠️
+- Mapped to phases: 47
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 after roadmap creation*
