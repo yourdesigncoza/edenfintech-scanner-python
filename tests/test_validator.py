@@ -4,7 +4,16 @@ from __future__ import annotations
 import unittest
 from copy import deepcopy
 
-from edenfintech_scanner_bootstrap.validator import detect_contradictions
+from edenfintech_scanner_bootstrap.validator import (
+    RedTeamValidatorClient,
+    detect_contradictions,
+    validate_overlay,
+)
+
+import json
+from pathlib import Path
+
+_FIXTURE_DIR = Path(__file__).parent / "fixtures" / "validator"
 
 
 def _make_raw_candidate(
@@ -136,6 +145,152 @@ class TestContradictionDetection(unittest.TestCase):
         raw = _make_raw_candidate()
         contradictions = detect_contradictions(overlay, raw)
         self.assertEqual(contradictions, [])
+
+
+def _load_reject_fixture() -> dict:
+    """Load the REJECT LLM response fixture."""
+    return json.loads((_FIXTURE_DIR / "llm-response-fixture.json").read_text())
+
+
+def _make_approve_fixture() -> dict:
+    """Build an APPROVE variant with empty objections."""
+    fixture = _load_reject_fixture()
+    fixture["verdict"] = "APPROVE"
+    fixture["objections"] = []
+    return fixture
+
+
+def _fixture_transport(fixture_data: dict):
+    """Return a transport function that captures request and returns fixture."""
+    captured_requests = []
+
+    def transport(request_payload: dict) -> dict:
+        captured_requests.append(request_payload)
+        return {"text": json.dumps(fixture_data), "stop_reason": "end_turn"}
+
+    transport.captured_requests = captured_requests
+    return transport
+
+
+class TestRedTeamValidator(unittest.TestCase):
+    """Tests for RedTeamValidatorClient."""
+
+    def test_instantiates_with_mock_transport(self):
+        """Client should accept a mock transport."""
+        transport = _fixture_transport(_load_reject_fixture())
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        self.assertIsNotNone(client)
+
+    def test_validate_returns_required_keys(self):
+        """validate() result must have verdict, questions, objections, contradictions."""
+        fixture = _load_reject_fixture()
+        transport = _fixture_transport(fixture)
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        overlay = _make_overlay_candidate()
+        raw = _make_raw_candidate()
+        result = client.validate(overlay, raw, [])
+        for key in ("verdict", "questions", "objections", "contradictions"):
+            self.assertIn(key, result)
+
+    def test_fixture_produces_5_questions(self):
+        """Fixture should produce exactly 5 questions with required keys."""
+        fixture = _load_reject_fixture()
+        transport = _fixture_transport(fixture)
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        overlay = _make_overlay_candidate()
+        raw = _make_raw_candidate()
+        result = client.validate(overlay, raw, [])
+        self.assertEqual(len(result["questions"]), 5)
+        for q in result["questions"]:
+            self.assertIn("question_id", q)
+            self.assertIn("challenge", q)
+            self.assertIn("evidence", q)
+            self.assertIn("severity", q)
+
+    def test_reject_verdict_has_nonempty_objections(self):
+        """REJECT verdict must include non-empty objections array."""
+        fixture = _load_reject_fixture()
+        transport = _fixture_transport(fixture)
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        result = client.validate(_make_overlay_candidate(), _make_raw_candidate(), [])
+        self.assertEqual(result["verdict"], "REJECT")
+        self.assertGreater(len(result["objections"]), 0)
+
+    def test_approve_verdict_has_empty_objections(self):
+        """APPROVE verdict must have empty objections array."""
+        fixture = _make_approve_fixture()
+        transport = _fixture_transport(fixture)
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        result = client.validate(_make_overlay_candidate(), _make_raw_candidate(), [])
+        self.assertEqual(result["verdict"], "APPROVE")
+        self.assertEqual(result["objections"], [])
+
+    def test_contradictions_included_in_request_payload(self):
+        """Pre-computed contradictions must appear in the request payload."""
+        fixture = _load_reject_fixture()
+        transport = _fixture_transport(fixture)
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        test_contradictions = [{"field": "revenue_b", "claim": "5.0", "actual": "3.4", "severity": "HIGH"}]
+        client.validate(_make_overlay_candidate(), _make_raw_candidate(), test_contradictions)
+        self.assertEqual(len(transport.captured_requests), 1)
+        payload_text = json.dumps(transport.captured_requests[0])
+        self.assertIn("revenue_b", payload_text)
+        self.assertIn("5.0", payload_text)
+
+    def test_request_payload_excludes_scores(self):
+        """Request payload must NOT contain pipeline scores or rankings."""
+        fixture = _load_reject_fixture()
+        transport = _fixture_transport(fixture)
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        overlay = _make_overlay_candidate()
+        # Add score fields that should NOT leak into validator
+        overlay["decision_score"] = 85.0
+        overlay["total_score"] = 92.0
+        overlay["ranking"] = 1
+        overlay["effective_probability"] = 75.0
+        client.validate(overlay, _make_raw_candidate(), [])
+        payload_text = json.dumps(transport.captured_requests[0])
+        for forbidden in ("decision_score", "total_score", "ranking", "effective_probability"):
+            self.assertNotIn(forbidden, payload_text)
+
+
+class TestValidateOverlayFlow(unittest.TestCase):
+    """Tests for the top-level validate_overlay() function."""
+
+    def test_validate_overlay_returns_all_keys(self):
+        """validate_overlay() must return verdict, questions, objections, contradictions."""
+        fixture = _load_reject_fixture()
+        transport = _fixture_transport(fixture)
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        overlay = _make_overlay_candidate(revenue_b=6.0)  # will produce contradictions
+        raw = _make_raw_candidate(latest_revenue_b=3.4)
+        result = validate_overlay(overlay, raw, client=client)
+        for key in ("verdict", "questions", "objections", "contradictions"):
+            self.assertIn(key, result)
+
+    def test_contradictions_run_first_and_appear_in_output(self):
+        """Contradictions from detect_contradictions should appear in the final result."""
+        fixture = _load_reject_fixture()
+        transport = _fixture_transport(fixture)
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        overlay = _make_overlay_candidate(revenue_b=6.0)  # >50% gap -> HIGH
+        raw = _make_raw_candidate(latest_revenue_b=3.4)
+        result = validate_overlay(overlay, raw, client=client)
+        self.assertGreater(len(result["contradictions"]), 0)
+        revenue_flags = [c for c in result["contradictions"] if c["field"] == "revenue_b"]
+        self.assertEqual(len(revenue_flags), 1)
+
+    def test_request_excludes_scores_in_full_flow(self):
+        """Full flow should not leak pipeline scores into the request payload."""
+        fixture = _load_reject_fixture()
+        transport = _fixture_transport(fixture)
+        client = RedTeamValidatorClient("fake-key", transport=transport)
+        overlay = _make_overlay_candidate()
+        overlay["decision_score"] = 99.0
+        raw = _make_raw_candidate()
+        validate_overlay(overlay, raw, client=client)
+        payload_text = json.dumps(transport.captured_requests[0])
+        self.assertNotIn("decision_score", payload_text)
 
 
 if __name__ == "__main__":
