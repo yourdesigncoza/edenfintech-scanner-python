@@ -65,9 +65,9 @@ Requirements for full integration. Each maps to roadmap phases.
 
 ### Scan Modes
 
-- [ ] **SCAN-01**: `auto-scan TICKER [TICKER...]` runs auto_analyze per ticker → pipeline → judge → report
-- [ ] **SCAN-02**: `sector-scan "Sector"` with hydration check, broken-chart filter (60%+ off ATH), industry exclusion, clustering, parallel auto_analyze per cluster
-- [ ] **SCAN-03**: Report output to `data/scans/json/` + `data/scans/` (markdown) with manifest per scan run
+- [x] **SCAN-01**: `auto-scan TICKER [TICKER...]` runs auto_analyze per ticker → pipeline → judge → report
+- [x] **SCAN-02**: `sector-scan "Sector"` with hydration check, broken-chart filter (60%+ off ATH), industry exclusion, clustering, parallel auto_analyze per cluster
+- [x] **SCAN-03**: Report output to `data/scans/json/` + `data/scans/` (markdown) with manifest per scan run
 
 ### Hardening
 
@@ -154,9 +154,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTO-02 | Phase 5 | Complete |
 | AUTO-03 | Phase 5 | Complete |
 | AUTO-04 | Phase 5 | Complete |
-| SCAN-01 | Phase 6 | Pending |
-| SCAN-02 | Phase 6 | Pending |
-| SCAN-03 | Phase 6 | Pending |
+| SCAN-01 | Phase 6 | Complete |
+| SCAN-02 | Phase 6 | Complete |
+| SCAN-03 | Phase 6 | Complete |
 | HARD-01 | Phase 6 | Complete |
 | HARD-02 | Phase 6 | Complete |
 | HARD-03 | Phase 6 | Complete |
