@@ -44,6 +44,10 @@ def scan_report_schema_path() -> Path:
     return methodology_root() / "scan-report.schema.json"
 
 
+def sector_knowledge_schema_path() -> Path:
+    return methodology_root() / "sector-knowledge.schema.json"
+
+
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text())
 
