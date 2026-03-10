@@ -1,324 +1,229 @@
-# EdenFinTech Scanner Python
+# EdenFinTech Scanner
 
-This repository now contains a deterministic Python scan pipeline built from the
-vendored EdenFinTech methodology assets. It consumes structured research inputs,
-applies the stage contracts locally, and emits JSON-first scan reports plus
-markdown summaries without changing the underlying methodology.
+A deterministic equity scan pipeline that consumes structured research inputs, applies stage contracts, and emits JSON reports with markdown summaries. Built for disciplined, repeatable investment analysis.
 
-## Included
+## Requirements
 
-- Vendored methodology assets from the current EdenFinTech scanner
-- Machine-readable stage contracts for scan orchestration
-- Canonical rulebook aligned to `strategy-rules.md`
-- Regression fixtures copied from existing scan artifacts
-- A deterministic Python pipeline for screening, analysis, epistemic review, report assembly, execution-log generation, and config-gated judge review
-- A CLI for validating assets, fetching FMP and Gemini raw bundles, generating structured-analysis overlays, merging/importing bundles, and executing scans from JSON input
-- A machine-draft field-generation layer that emits auditable structured-analysis drafts with provenance from merged raw evidence
-- GitHub Actions CI that runs unit tests, asset validation, and regression checks on every push and pull request
-- Sanitized wire-format FMP and Gemini fixtures that harden adapter tests against response-shape drift
+- Python 3.11+
+- API keys for data retrieval (see [Environment Variables](#environment-variables))
 
-## Commands
+## Quick Start
 
 ```bash
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-assets
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-regression
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-contract screening
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-template
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-raw-scan-template
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-scan-schema
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-gemini-schema
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli show-structured-analysis-schema
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-fmp-bundle RAW1 RAW2 --json-out fmp-raw.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli fetch-gemini-bundle RAW1 RAW2 --focus "payments software" --json-out gemini-raw.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli merge-raw-bundles fmp-raw.json gemini-raw.json --json-out merged-raw.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-structured-analysis-template merged-raw.json --json-out structured-analysis.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli generate-structured-analysis-draft merged-raw.json --json-out structured-analysis-draft.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli review-structured-analysis structured-analysis-reviewed.json --json-out review-checklist.json --markdown-out review-checklist.md --overlay-out structured-analysis-reviewed-notes.json --set-note screening_inputs.solvency="Reviewer checked solvency against cash generation history."
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli suggest-review-notes structured-analysis-reviewed.json --json-out review-note-suggestions.json --markdown-out review-note-suggestions.md
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli finalize-structured-analysis structured-analysis-reviewed.json --reviewer "Analyst Name" --json-out structured-analysis-finalized.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package RAW1 RAW2 --out-dir runs/review-package
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-scan-input raw-input.json --json-out input.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-scan-input input.json
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-scan input.json --json-out report.json --markdown-out report.md --execution-log-out execution-log.md
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-judge report.json execution-log.md
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-live-scan RAW1 RAW2 --out-dir runs/demo --stop-at raw-bundle
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install in editable mode
+pip install -e .
+
+# Copy and configure environment variables
+cp .env.example .env
+# Edit .env with your API keys
+
+# Validate methodology assets
+edenfintech-bootstrap validate-assets
 ```
 
-## Layout
+## Environment Variables
 
-```text
-assets/
-  contracts/
-  fixtures/regression/
-  methodology/
-  rules/
+| Variable | Required | Description |
+|---|---|---|
+| `FMP_API_KEY` | Yes | Financial Modeling Prep — quantitative data (price, revenue, FCF) |
+| `GEMINI_API_KEY` | Yes | Google Gemini — qualitative evidence (catalysts, risks, moat, management) |
+| `ANTHROPIC_API_KEY` | For analyst | Claude — LLM-powered analysis drafts |
+| `OPENAI_API_KEY` | No | Enables API judge; falls back to deterministic local judge |
+| `CODEX_JUDGE_MODEL` | No | Model for judge calls (default: `gpt-5-codex`) |
+| `ANALYST_MODEL` | No | Model for analyst drafts (default: `claude-sonnet-4-5-20250514`) |
+
+## Architecture
+
+```
 src/edenfintech_scanner_bootstrap/
-tests/
-  fixtures/
+├── Data Retrieval     fmp.py, gemini.py
+├── Structured Analysis  field_generation.py, structured_analysis.py, analyst.py
+├── Pipeline Core      pipeline.py, scoring.py, reporting.py
+├── Orchestration      live_scan.py, review_package.py, scanner.py, cli.py
+├── Holdings           holding_review.py
+├── Sectors            sector.py
+└── Supporting         importers.py, judge.py, schemas.py, validation.py,
+                       regression.py, config.py, cache.py, assets.py
 ```
 
-## Terminal Quick Start
+### Data Retrieval
 
-Run these from the repository root:
+**FMP adapter** (`fmp.py`) fetches quantitative bundles — price history, revenue, free cash flow. Results are cached locally (`data/cache/fmp/`) with TTL-based expiration.
+
+**Gemini adapter** (`gemini.py`) fetches qualitative evidence — catalysts, risks, moat assessment, management quality. Supports custom focus areas and research questions.
+
+Both adapters output bundles conforming to schemas in `assets/methodology/`.
+
+### Structured Analysis
+
+Generates machine-draft overlays from merged raw bundles with per-field provenance tracking. The overlay lifecycle:
+
+1. **DRAFT** — auto-generated from raw data
+2. **Reviewed** — human adds `review_note` per field
+3. **FINALIZED** — promoted only after all fields have explicit review notes
+
+An optional LLM analyst (`analyst.py`) can generate richer drafts using Claude.
+
+### Pipeline Core
+
+Deterministic scan execution through contract-governed stages:
+
+1. **Screening** — 5 checks: solvency, dilution, revenue growth, ROIC, valuation
+2. **Cluster analysis** — groups findings by theme
+3. **Epistemic review** — assesses confidence and uncertainty
+4. **Report assembly** — produces final JSON report + markdown summary
+
+`scoring.py` contains all financial math: CAGR, floor price, decision score, confidence bands.
+
+### Automation
+
+**Auto-scan** (`scanner.py`) runs end-to-end scans for a list of tickers — retrieval, analysis, pipeline, and manifesting results with PASS/FAIL/PENDING status.
+
+**Sector scan** discovers tickers within a sector via hydrated sector knowledge, then batch-scans them with configurable parallelism and industry exclusions.
+
+**Holdings review** (`holding_review.py`) evaluates existing portfolio positions against current market prices, recalculating expected returns and generating action signals.
+
+## Operator Workflow
+
+### Single-ticker scan with human review
 
 ```bash
-cd /home/laudes/zoot/projects/edenfintech-scanner-python
+# 1. Build review package (fetches data, generates draft overlay)
+edenfintech-bootstrap build-review-package AAPL --out-dir runs/aapl-01
+
+# 2. Review artifacts in runs/aapl-01/review/
+#    - review-checklist.md
+#    - review-note-suggestions.md
+#    Add review_note to each provenance entry
+
+# 3. Finalize the structured analysis
+edenfintech-bootstrap finalize-structured-analysis \
+  runs/aapl-01/review/structured-analysis.json \
+  --reviewer "Your Name" --json-out runs/aapl-01/final/structured-analysis.json
+
+# 4. Re-run with finalized overlay for full report
+edenfintech-bootstrap build-review-package AAPL \
+  --out-dir runs/aapl-01-final \
+  --structured-analysis-path runs/aapl-01/final/structured-analysis.json
 ```
 
-### Run Tests
+### Automated batch scan
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli validate-assets
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli run-regression
+# Scan multiple tickers end-to-end
+edenfintech-bootstrap auto-scan AAPL MSFT GOOGL --out-dir runs/batch-01
+
+# Scan an entire sector
+edenfintech-bootstrap sector-scan "Technology" --out-dir runs/tech-01 --max-workers 3
 ```
 
-### Run A Live Review Package
-
-This is the first live step for a ticker such as `PYPL`:
+### Holdings review
 
 ```bash
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package \
-  PYPL \
-  --out-dir runs/pypl-review
+# Review current holdings against live prices
+edenfintech-bootstrap review-holding AAPL MSFT --holdings-path data/holdings/holdings.json
 ```
 
-Review these files next:
+## CLI Reference
 
-```text
-runs/pypl-review/review/review-checklist.md
-runs/pypl-review/review/review-note-suggestions.md
-runs/pypl-review/raw/structured-analysis-draft.json
+### Data Retrieval
+
+| Command | Description |
+|---|---|
+| `fetch-fmp-bundle TICKER [...]` | Fetch quantitative data from FMP |
+| `fetch-gemini-bundle TICKER [...]` | Fetch qualitative data from Gemini |
+| `merge-raw-bundles FMP_PATH GEMINI_PATH` | Merge FMP + Gemini bundles |
+| `cache-status` | Show FMP cache state |
+| `cache-clear` | Clear FMP cache |
+
+### Analysis
+
+| Command | Description |
+|---|---|
+| `build-structured-analysis-template RAW_BUNDLE` | Generate empty overlay template |
+| `generate-structured-analysis-draft RAW_BUNDLE` | Generate machine-draft overlay |
+| `generate-llm-analysis-draft RAW_BUNDLE` | Generate LLM-powered draft (requires `ANTHROPIC_API_KEY`) |
+| `review-structured-analysis PATH` | Review overlay, set notes via `--set-note` |
+| `suggest-review-notes PATH` | Auto-suggest review notes |
+| `finalize-structured-analysis PATH --reviewer NAME` | Promote reviewed overlay to FINALIZED |
+
+### Pipeline
+
+| Command | Description |
+|---|---|
+| `run-scan INPUT_PATH` | Run deterministic scan pipeline |
+| `run-live-scan TICKER [...] --out-dir DIR` | Retrieval + pipeline in one step |
+| `build-review-package TICKER [...] --out-dir DIR` | Full review workflow package |
+| `auto-scan TICKER [...]` | End-to-end automated scan |
+| `sector-scan SECTOR_NAME` | Discover + scan all tickers in a sector |
+| `run-judge REPORT_PATH LOG_PATH` | Run final judge on scan report |
+
+### Holdings & Sectors
+
+| Command | Description |
+|---|---|
+| `review-holding TICKER [...]` | Review portfolio holdings against live prices |
+| `hydrate-sector SECTOR_NAME` | Build sector knowledge base via Gemini |
+| `sector-status` | Show hydration status of all sectors |
+
+### Utilities
+
+| Command | Description |
+|---|---|
+| `validate-assets` | Validate methodology contracts, schemas, and rules |
+| `run-regression` | Run regression suite against fixture snapshots |
+| `show-contract STAGE_ID` | Print a stage contract |
+| `show-scan-template` | Print scan input template |
+| `show-scan-schema` | Print scan input JSON schema |
+| `show-gemini-schema` | Print Gemini bundle JSON schema |
+| `show-structured-analysis-schema` | Print structured analysis JSON schema |
+
+## Methodology Assets
+
+```
+assets/
+├── contracts/       Stage contracts defining required inputs/outputs
+│   ├── screening.json
+│   ├── cluster_analysis.json
+│   ├── epistemic_review.json
+│   ├── report_assembly.json
+│   └── codex_final_judge.json
+├── methodology/     Schemas, templates, and strategy rules
+│   ├── strategy-rules.md          ← authoritative methodology reference
+│   ├── scoring-formulas.md
+│   ├── scan-input.schema.json
+│   ├── scan-report.schema.json
+│   ├── structured-analysis.schema.json
+│   ├── gemini-raw-bundle.schema.json
+│   └── holdings.schema.json
+├── rules/
+│   └── canonical-rulebook.json
+└── fixtures/regression/           Regression snapshot fixtures
 ```
 
-### Run A Final Package
+**`strategy-rules.md` is the authoritative methodology reference.** If any code or contract disagrees with it, the methodology file wins.
 
-After you have reviewed and approved the structured overlay:
+## Testing
 
 ```bash
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli finalize-structured-analysis \
-  runs/pypl-review/review/structured-analysis-reviewed.json \
-  --reviewer "Your Name" \
-  --json-out runs/pypl-review/review/structured-analysis-finalized.json
+# Run all unit tests
+python -m unittest discover -s tests -v
+
+# Validate methodology assets
+edenfintech-bootstrap validate-assets
+
+# Run regression suite
+edenfintech-bootstrap run-regression
 ```
 
-```bash
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package \
-  PYPL \
-  --out-dir runs/pypl-review-final \
-  --structured-analysis-path runs/pypl-review/review/structured-analysis-finalized.json
-```
+## Key Conventions
 
-Inspect the final outputs here:
-
-```text
-runs/pypl-review-final/final/report.json
-runs/pypl-review-final/final/report.md
-runs/pypl-review-final/final/execution-log.md
-runs/pypl-review-final/final/judge.json
-```
-
-## Safest Path
-
-Use this as the canonical operator flow when you want a reviewable scan without
-skipping any boundary:
-
-1. Build the initial review package.
-
-```bash
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package RAW1 RAW2 --out-dir runs/review-package
-```
-
-This writes raw retrieval artifacts into `raw/` and review helpers into
-`review/`, including `raw/structured-analysis-template.json`,
-`raw/structured-analysis-draft.json`, `review/review-checklist.*`, and
-`review/review-note-suggestions.*`.
-
-2. Review the checklist and note suggestions.
-
-Start with `review/review-checklist.md` and
-`review/review-note-suggestions.md`. If you want to persist targeted note
-updates without changing any judgments, use:
-
-```bash
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli review-structured-analysis \
-  runs/review-package/raw/structured-analysis-draft.json \
-  --json-out runs/review-package/review/review-checklist.json \
-  --markdown-out runs/review-package/review/review-checklist.md \
-  --overlay-out runs/review-package/review/structured-analysis-reviewed.json \
-  --set-note screening_inputs.solvency="Reviewer checked solvency against cash generation history."
-```
-
-3. Finalize the reviewed overlay explicitly.
-
-```bash
-PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli finalize-structured-analysis \
-  runs/review-package/review/structured-analysis-reviewed.json \
-  --reviewer "Analyst Name" \
-  --json-out runs/review-package/review/structured-analysis-finalized.json
-```
-
-4. Rebuild the package with the finalized overlay.
-
-```bash
-  PYTHONPATH=src python -m edenfintech_scanner_bootstrap.cli build-review-package \
-  RAW1 RAW2 \
-  --out-dir runs/review-package-final \
-  --structured-analysis-path runs/review-package/review/structured-analysis-finalized.json
-```
-
-5. Inspect the final artifacts.
-
-The rebuilt package keeps raw retrieval files in `raw/`, review helpers in
-`review/`, and final execution artifacts in `final/`. The `final/` directory
-includes `report.json`, `report.md`, `execution-log.md`, `judge.json`, and a
-copy of the exact finalized overlay that drove the scan.
-
-Example package layout:
-
-```text
-runs/review-package-final/
-  review-package-manifest.json
-  raw/
-    fmp-raw.json
-    gemini-raw.json
-    merged-raw.json
-    structured-analysis-template.json
-    structured-analysis-draft.json
-  review/
-    review-checklist.json
-    review-checklist.md
-    review-note-suggestions.json
-    review-note-suggestions.md
-  final/
-    structured-analysis-finalized.json
-    enriched-raw.json
-    scan-input.json
-    report.json
-    report.md
-    execution-log.md
-    judge.json
-```
-
-Example manifest excerpt:
-
-```json
-{
-  "out_dir": "runs/review-package-final",
-  "stop_at": "report",
-  "directories": {
-    "raw": "runs/review-package-final/raw",
-    "review": "runs/review-package-final/review",
-    "final": "runs/review-package-final/final"
-  },
-  "artifacts": {
-    "merged_raw": "runs/review-package-final/raw/merged-raw.json",
-    "review_checklist_markdown": "runs/review-package-final/review/review-checklist.md",
-    "structured_analysis_finalized": "runs/review-package-final/final/structured-analysis-finalized.json",
-    "report_json": "runs/review-package-final/final/report.json",
-    "judge_json": "runs/review-package-final/final/judge.json"
-  }
-}
-```
-
-## Scan Input Model
-
-`run-scan` expects a structured JSON payload. Each candidate must include
-screening data; names that pass screening must also include analysis inputs
-(`base_case`, `worst_case`, `probability`, catalyst/risk fields) and an
-`epistemic_review` object with the five PCS answers. `portfolio_context` may
-also include `current_holdings` so the report can populate
-`current_holding_overlays`.
-
-Use `show-scan-template` to generate a working example payload and
-`show-scan-schema` to inspect the versioned contract in
-`assets/methodology/scan-input.schema.json`. `validate-scan-input` performs
-schema validation plus stage-aware runtime checks before a scan is run. The
-pipeline also supports a raw-bundle import step through `show-raw-scan-template`
-and `build-scan-input`, which maps a simpler research bundle into the validated
-scan-input contract. Future importer code can read API keys from `.env`; see
-`.env.example` for the expected variables. If a helper or contract ever
-disagrees with the vendored `strategy-rules.md`, the methodology file wins.
-
-The current automation boundary between retrieval and the deterministic pipeline
-is the structured-analysis overlay in
-`assets/methodology/structured-analysis.schema.json`. Use
-`build-structured-analysis-template` to generate a ticker-aligned overlay
-template from a merged raw bundle, then replace the generated
-`screening_inputs`, `analysis_inputs`, and `epistemic_inputs` with
-methodology-grounded judgments before building scan input or a report. The
-generated template is intentionally non-executable: it contains
-`__REQUIRED__` markers, starts as `completion_status: DRAFT`, and is bound to
-the raw bundle fingerprint it was generated from.
-
-`generate-structured-analysis-draft` produces a schema-valid machine draft from
-the same merged raw bundle. It still keeps `completion_status: DRAFT`, adds
-`generation_metadata`, and records `field_provenance` with
-`status: MACHINE_DRAFT` per generated field so human review can see what was
-inferred from which raw evidence. A draft cannot be promoted just by changing
-metadata: finalization now requires those provenance entries to be converted
-away from `MACHINE_DRAFT`.
-
-`finalize-structured-analysis` is the narrow helper for that last step. It does
-not invent judgments or rewrite field values. It only validates the reviewed
-overlay, checks internal raw-bundle fingerprint continuity, converts remaining
-required `MACHINE_DRAFT` provenance entries to either `HUMAN_CONFIRMED` or
-`HUMAN_EDITED`, and adds top-level finalization metadata before the overlay can
-be applied. It will only convert a machine-draft provenance entry if that entry
-already carries an explicit `review_note`, so an untouched machine-generated
-draft cannot be rubber-stamped into a finalized overlay.
-
-`review-structured-analysis` sits one step earlier in the workflow. It produces
-a checklist of required provenance entries, surfaces which ones are still
-`MACHINE_DRAFT`, `HUMAN_CONFIRMED`, or `HUMAN_EDITED`, and can write targeted
-`review_note` updates into a new overlay file. It does not change field values,
-provenance statuses, or completion state. JSON remains the source of truth, and
-`--markdown-out` is only a rendered review artifact from the same checklist
-report object.
-
-`suggest-review-notes` is a separate non-mutating helper. It emits suggested
-`review_note` scaffolds only for required provenance entries that still lack a
-note, based on the existing provenance rationale and evidence references. It
-does not change overlays, statuses, field values, or completion state.
-
-`build-review-package` is the thin packaging runner for operators. It reuses the
-existing live retrieval, review artifact, scan, and judge helpers to assemble a
-predictable run directory with `raw/`, `review/`, and `final/` subdirectories.
-Without a finalized structured overlay it stops at the raw-bundle boundary and
-writes review artifacts into `review/` while keeping retrieval artifacts under
-`raw/`. If you provide `--structured-analysis-path`, it also writes the
-enriched raw bundle, scan input, report, execution log, judge output, and a
-packaged copy of the finalized overlay under `final/`, plus a package manifest
-at the run root. The manifest is the stable machine-readable index; the
-subdirectories are the human-facing layout. When the finalized overlay comes
-from an earlier review package, `build-review-package` reuses that package's
-`raw/merged-raw.json` and sibling raw artifacts instead of refetching live
-data, so fingerprint continuity is preserved through the final package step.
-
-The judge layer is advisory and config-gated. If `OPENAI_API_KEY` is missing,
-the pipeline falls back to a deterministic local judge that stays within the
-existing `codex_final_judge` contract.
-
-`fetch-fmp-bundle` is retrieval-only. It emits raw-bundle fields from Financial
-Modeling Prep, including current price, derived `% off ATH`, revenue history,
-share-count, and FCF-margin history. `fetch-gemini-bundle` is also retrieval-
-only. It emits sourced qualitative evidence arrays defined in
-`assets/methodology/gemini-raw-bundle.schema.json`, such as research notes,
-catalyst evidence, risk evidence, management/moat/precedent observations, and
-epistemic anchors. Neither command emits scan-input payloads or methodology
-decisions directly. `merge-raw-bundles` combines overlapping FMP and Gemini
-tickers into a single combined raw bundle; it still requires
-`screening_inputs`, `analysis_inputs`, and `epistemic_inputs` before
-`build-scan-input` can succeed. `run-live-scan` orchestrates the full retrieval
-flow and writes all intermediate artifacts into one directory, but by default it
-stops at `raw-bundle` and writes a structured-analysis template so the current
-boundary stays explicit. If you later apply a structured overlay, its
-`source_bundle` fingerprint must match the freshly fetched raw bundle.
-`run-live-scan` now also writes `structured-analysis-draft.json` beside the
-manual template so the machine-draft path is visible without bypassing review.
-
-Adapter tests now use sanitized wire-format fixture payloads under
-`tests/fixtures/fmp/` and `tests/fixtures/gemini/`, including separate
-official-shape fixtures that preserve provider nesting and response noise. That
-covers response-shape variance without introducing live network dependence into
-CI.
+- JSON is the source of truth; markdown outputs are rendered views only
+- Raw bundle fingerprints flow through the entire pipeline for traceability
+- No external dependencies beyond stdlib for core pipeline; `requests` for API adapters
+- The overlay lifecycle enforces human review before finalization
+- When re-running with a finalized overlay, raw bundles are reused (not refetched) to preserve fingerprint continuity

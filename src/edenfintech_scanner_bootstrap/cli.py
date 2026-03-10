@@ -501,10 +501,14 @@ def _cmd_review_holding(
 def _cmd_auto_scan(tickers: list[str], out_dir: str | None, fresh: bool = False) -> int:
     config = load_config()
     config.require("fmp_api_key", "anthropic_api_key")
+    from .fmp import _default_transport
+    store = FmpCacheStore(_default_fmp_cache_dir())
+    transport = cached_transport(_default_transport, store, fresh=fresh)
     result = auto_scan(
         tickers,
         config=config,
         out_dir=Path(out_dir) if out_dir else None,
+        fmp_transport=transport,
     )
     summary = result.manifest_path.read_text() if result.manifest_path.exists() else "{}"
     manifest = json.loads(summary)
@@ -524,12 +528,18 @@ def _cmd_sector_scan(
 ) -> int:
     config = load_config()
     config.require("fmp_api_key", "anthropic_api_key", "gemini_api_key")
+    from .fmp import _default_transport
+    store = FmpCacheStore(_default_fmp_cache_dir())
+    transport = cached_transport(_default_transport, store, fresh=fresh)
+    fmp_client = FmpClient(config.fmp_api_key, transport=transport)
     result = sector_scan(
         sector_name,
         config=config,
         out_dir=Path(out_dir) if out_dir else None,
         max_workers=max_workers,
         excluded_industries=exclude_industry,
+        fmp_transport=transport,
+        fmp_client=fmp_client,
     )
     summary = result.manifest_path.read_text() if result.manifest_path.exists() else "{}"
     manifest = json.loads(summary)
