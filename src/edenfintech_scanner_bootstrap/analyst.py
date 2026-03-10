@@ -159,7 +159,13 @@ def _build_system_prompt(sector_knowledge: dict | None = None) -> str:
     return "\n".join(parts)
 
 
-def _build_user_prompt(raw_candidate: dict, evidence_context: dict, evidence_snippets: set[str]) -> str:
+def _build_user_prompt(
+    raw_candidate: dict,
+    evidence_context: dict,
+    evidence_snippets: set[str],
+    *,
+    validator_objections: list[dict] | None = None,
+) -> str:
     """Format the raw candidate data for the user message."""
     parts = [
         "Analyze the following raw candidate and produce a structured analysis overlay.",
@@ -177,6 +183,14 @@ def _build_user_prompt(raw_candidate: dict, evidence_context: dict, evidence_sni
         "RAW CANDIDATE DATA:",
         json.dumps(raw_candidate, indent=2),
     ]
+    if validator_objections is not None:
+        parts.extend([
+            "",
+            "VALIDATOR OBJECTIONS (from previous attempt -- you MUST address these):",
+            json.dumps(validator_objections, indent=2),
+            "",
+            "Revise your analysis to address each objection explicitly.",
+        ])
     return "\n".join(parts)
 
 
@@ -257,6 +271,7 @@ class ClaudeAnalystClient:
         raw_candidate: dict,
         *,
         sector_knowledge: dict | None = None,
+        validator_objections: list[dict] | None = None,
     ) -> dict:
         """Analyze a single raw candidate and return structured output."""
         evidence_context = _candidate_evidence_context(raw_candidate)
@@ -264,7 +279,10 @@ class ClaudeAnalystClient:
         output_schema = _build_candidate_output_schema()
 
         system_prompt = _build_system_prompt(sector_knowledge)
-        user_prompt = _build_user_prompt(raw_candidate, evidence_context, evidence_snippets)
+        user_prompt = _build_user_prompt(
+            raw_candidate, evidence_context, evidence_snippets,
+            validator_objections=validator_objections,
+        )
 
         request_payload = {
             "system": system_prompt,
@@ -288,6 +306,7 @@ def generate_llm_analysis_draft(
     *,
     client: ClaudeAnalystClient,
     sector_knowledge: dict | None = None,
+    validator_objections: list[dict] | None = None,
 ) -> dict:
     """Generate a complete LLM-drafted structured analysis overlay.
 
@@ -304,7 +323,10 @@ def generate_llm_analysis_draft(
             raise ValueError("raw_bundle.raw_candidates[] must include ticker")
 
         evidence_context = _candidate_evidence_context(raw_candidate)
-        candidate_output = client.analyze(raw_candidate, sector_knowledge=sector_knowledge)
+        candidate_output = client.analyze(
+            raw_candidate, sector_knowledge=sector_knowledge,
+            validator_objections=validator_objections,
+        )
 
         structured_candidates.append({
             "ticker": raw_candidate["ticker"],
