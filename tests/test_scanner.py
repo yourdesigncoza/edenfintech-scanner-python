@@ -159,10 +159,9 @@ class TestFmpStockScreener(unittest.TestCase):
 class TestAutoScan(unittest.TestCase):
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
-    def test_auto_scan_two_tickers(self, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_auto_scan_two_tickers(self, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import auto_scan
 
         mock_auto_analyze.side_effect = [
@@ -170,7 +169,6 @@ class TestAutoScan(unittest.TestCase):
             _make_auto_analyze_result("MSFT"),
         ]
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
 
@@ -188,15 +186,13 @@ class TestAutoScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
-    def test_auto_scan_manifest_structure(self, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_auto_scan_manifest_structure(self, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import auto_scan
 
         mock_auto_analyze.return_value = _make_auto_analyze_result("AAPL")
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
 
@@ -215,15 +211,13 @@ class TestAutoScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
-    def test_auto_scan_writes_reports(self, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_auto_scan_writes_reports(self, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import auto_scan
 
         mock_auto_analyze.return_value = _make_auto_analyze_result("AAPL")
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test Report"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
 
@@ -240,15 +234,13 @@ class TestAutoScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
-    def test_auto_scan_anchoring_flag(self, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_auto_scan_anchoring_flag(self, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import auto_scan
 
         mock_auto_analyze.return_value = _make_auto_analyze_result("AAPL", base_prob=60.0, risk_type="Cyclical/Macro")
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = {"flag": "PROBABILITY_ANCHORING_SUSPECT"}
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
 
@@ -262,15 +254,13 @@ class TestAutoScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
-    def test_auto_scan_evidence_quality_warning(self, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_auto_scan_evidence_quality_warning(self, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import auto_scan
 
         mock_auto_analyze.return_value = _make_auto_analyze_result("AAPL")
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {
             "total_citations": 5, "concrete_count": 1, "vague_count": 4,
@@ -287,16 +277,14 @@ class TestAutoScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
     @patch("edenfintech_scanner_bootstrap.scanner.cagr_exception_panel")
-    def test_auto_scan_cagr_exception_approved(self, mock_cagr, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_auto_scan_cagr_exception_approved(self, mock_cagr, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import auto_scan
 
         mock_auto_analyze.return_value = _make_auto_analyze_result("AAPL", cagr_pct=25.0)
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
         mock_cagr.return_value = ExceptionPanelResult(
@@ -317,16 +305,14 @@ class TestAutoScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
     @patch("edenfintech_scanner_bootstrap.scanner.cagr_exception_panel")
-    def test_auto_scan_cagr_exception_rejected(self, mock_cagr, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_auto_scan_cagr_exception_rejected(self, mock_cagr, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import auto_scan
 
         mock_auto_analyze.return_value = _make_auto_analyze_result("AAPL", cagr_pct=25.0)
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
         mock_cagr.return_value = ExceptionPanelResult(
@@ -376,12 +362,11 @@ class TestSectorScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
     @patch("edenfintech_scanner_bootstrap.scanner.check_sector_freshness")
     @patch("edenfintech_scanner_bootstrap.scanner.build_raw_candidate_from_fmp")
-    def test_sector_scan_broken_chart_filter(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_sector_scan_broken_chart_filter(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import sector_scan
 
         mock_freshness.return_value = {"status": "FRESH"}
@@ -402,7 +387,6 @@ class TestSectorScan(unittest.TestCase):
         ]
         mock_auto_analyze.return_value = _make_auto_analyze_result("KO")
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
 
@@ -415,12 +399,11 @@ class TestSectorScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
     @patch("edenfintech_scanner_bootstrap.scanner.check_sector_freshness")
     @patch("edenfintech_scanner_bootstrap.scanner.build_raw_candidate_from_fmp")
-    def test_sector_scan_exclude_industries(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_sector_scan_exclude_industries(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import sector_scan
 
         mock_freshness.return_value = {"status": "FRESH"}
@@ -438,7 +421,6 @@ class TestSectorScan(unittest.TestCase):
         ]
         mock_auto_analyze.return_value = _make_auto_analyze_result("KO")
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
 
@@ -453,12 +435,11 @@ class TestSectorScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
     @patch("edenfintech_scanner_bootstrap.scanner.check_sector_freshness")
     @patch("edenfintech_scanner_bootstrap.scanner.build_raw_candidate_from_fmp")
-    def test_sector_scan_manifest_has_sector(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_sector_scan_manifest_has_sector(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import sector_scan
 
         mock_freshness.return_value = {"status": "FRESH"}
@@ -467,7 +448,6 @@ class TestSectorScan(unittest.TestCase):
         mock_build_raw.return_value = {"ticker": "KO", "market_snapshot": {"pct_off_ath": 70.0}, "industry": "Beverages"}
         mock_auto_analyze.return_value = _make_auto_analyze_result("KO")
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
 
@@ -483,12 +463,11 @@ class TestSectorScan(unittest.TestCase):
 
     @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
     @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
-    @patch("edenfintech_scanner_bootstrap.scanner.render_scan_markdown")
     @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
     @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
     @patch("edenfintech_scanner_bootstrap.scanner.check_sector_freshness")
     @patch("edenfintech_scanner_bootstrap.scanner.build_raw_candidate_from_fmp")
-    def test_sector_scan_clusters_by_industry(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_render, mock_run_scan, mock_auto_analyze):
+    def test_sector_scan_clusters_by_industry(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
         from edenfintech_scanner_bootstrap.scanner import sector_scan
 
         mock_freshness.return_value = {"status": "FRESH"}
@@ -505,7 +484,6 @@ class TestSectorScan(unittest.TestCase):
         ]
         mock_auto_analyze.return_value = _make_auto_analyze_result("KO")
         mock_run_scan.return_value = _make_scan_artifacts()
-        mock_render.return_value = "# Test"
         mock_anchoring.return_value = None
         mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
 
@@ -574,6 +552,118 @@ class TestCliDispatch(unittest.TestCase):
         mock_sector_scan.assert_called_once()
         call_args = mock_sector_scan.call_args
         self.assertEqual(call_args[0][0] if call_args[0] else call_args[1].get("sector_name"), "Consumer Defensive")
+
+
+# ---------------------------------------------------------------------------
+# Test auto_scan cache wiring
+# ---------------------------------------------------------------------------
+
+class TestAutoScanCache(unittest.TestCase):
+    @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
+    def test_transport_forwarded(self, mock_auto_analyze):
+        """auto_scan(fmp_transport=mock) forwards it to auto_analyze(fmp_transport=mock)."""
+        from edenfintech_scanner_bootstrap.scanner import auto_scan
+
+        mock_auto_analyze.side_effect = RuntimeError("stop early")
+        mock_transport = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = _make_config()
+            result = auto_scan(["AAPL"], config=config, out_dir=Path(tmpdir), fmp_transport=mock_transport)
+            # auto_analyze was called with fmp_transport
+            call_kwargs = mock_auto_analyze.call_args[1]
+            self.assertIs(call_kwargs["fmp_transport"], mock_transport)
+
+    @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
+    def test_fresh_flag_not_responsibility(self, mock_auto_analyze):
+        """auto_scan receives an already-configured transport and passes it unchanged."""
+        from edenfintech_scanner_bootstrap.scanner import auto_scan
+
+        mock_auto_analyze.side_effect = RuntimeError("stop early")
+        mock_transport = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = _make_config()
+            auto_scan(["AAPL"], config=config, out_dir=Path(tmpdir), fmp_transport=mock_transport)
+            # The exact same object should be forwarded -- not wrapped or modified
+            call_kwargs = mock_auto_analyze.call_args[1]
+            self.assertIs(call_kwargs["fmp_transport"], mock_transport)
+
+    @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
+    def test_none_default_no_regression(self, mock_auto_analyze):
+        """auto_scan() with no fmp_transport passes None (backward-compatible)."""
+        from edenfintech_scanner_bootstrap.scanner import auto_scan
+
+        mock_auto_analyze.side_effect = RuntimeError("stop early")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = _make_config()
+            auto_scan(["AAPL"], config=config, out_dir=Path(tmpdir))
+            call_kwargs = mock_auto_analyze.call_args[1]
+            self.assertIsNone(call_kwargs.get("fmp_transport"))
+
+
+# ---------------------------------------------------------------------------
+# Test sector_scan cache wiring
+# ---------------------------------------------------------------------------
+
+class TestSectorScanCache(unittest.TestCase):
+    @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
+    @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
+    @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
+    @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
+    @patch("edenfintech_scanner_bootstrap.scanner.check_sector_freshness")
+    @patch("edenfintech_scanner_bootstrap.scanner.build_raw_candidate_from_fmp")
+    def test_transport_forwarded(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
+        """sector_scan(fmp_transport=mock) forwards it to auto_analyze(fmp_transport=mock)."""
+        from edenfintech_scanner_bootstrap.scanner import sector_scan
+
+        mock_freshness.return_value = {"status": "FRESH"}
+        fmp_client = MagicMock(spec=FmpClient)
+        fmp_client.stock_screener.return_value = [{"symbol": "KO", "industry": "Beverages"}]
+        mock_build_raw.return_value = {"ticker": "KO", "market_snapshot": {"pct_off_ath": 70.0}, "industry": "Beverages"}
+        mock_auto_analyze.return_value = _make_auto_analyze_result("KO")
+        mock_run_scan.return_value = _make_scan_artifacts()
+        mock_anchoring.return_value = None
+        mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
+
+        mock_transport = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = _make_config()
+            sector_scan(
+                "Consumer Defensive", config=config, out_dir=Path(tmpdir),
+                fmp_client=fmp_client, fmp_transport=mock_transport, max_workers=1,
+            )
+            call_kwargs = mock_auto_analyze.call_args[1]
+            self.assertIs(call_kwargs["fmp_transport"], mock_transport)
+
+    @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
+    @patch("edenfintech_scanner_bootstrap.scanner.run_scan")
+    @patch("edenfintech_scanner_bootstrap.scanner.detect_probability_anchoring")
+    @patch("edenfintech_scanner_bootstrap.scanner.score_evidence_quality")
+    @patch("edenfintech_scanner_bootstrap.scanner.check_sector_freshness")
+    @patch("edenfintech_scanner_bootstrap.scanner.build_raw_candidate_from_fmp")
+    def test_fmp_client_used_for_screener(self, mock_build_raw, mock_freshness, mock_evidence, mock_anchoring, mock_run_scan, mock_auto_analyze):
+        """sector_scan(fmp_client=mock_client) uses mock_client for screener step."""
+        from edenfintech_scanner_bootstrap.scanner import sector_scan
+
+        mock_freshness.return_value = {"status": "FRESH"}
+        fmp_client = MagicMock(spec=FmpClient)
+        fmp_client.stock_screener.return_value = [{"symbol": "KO", "industry": "Beverages"}]
+        mock_build_raw.return_value = {"ticker": "KO", "market_snapshot": {"pct_off_ath": 70.0}, "industry": "Beverages"}
+        mock_auto_analyze.return_value = _make_auto_analyze_result("KO")
+        mock_run_scan.return_value = _make_scan_artifacts()
+        mock_anchoring.return_value = None
+        mock_evidence.return_value = {"total_citations": 1, "concrete_count": 1, "vague_count": 0, "concrete_ratio": 1.0, "methodology_warning": None}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = _make_config()
+            sector_scan(
+                "Consumer Defensive", config=config, out_dir=Path(tmpdir),
+                fmp_client=fmp_client, max_workers=1,
+            )
+            fmp_client.stock_screener.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .analyst import ClaudeAnalystClient, generate_llm_analysis_draft
 from .config import AppConfig
+from .fmp import FmpTransport
 from .epistemic_reviewer import (
     EpistemicReviewerClient,
     EpistemicReviewInput,
@@ -48,6 +49,7 @@ def auto_analyze(
     *,
     config: AppConfig,
     out_dir: Path,
+    fmp_transport: FmpTransport | None = None,
     analyst_client: ClaudeAnalystClient | None = None,
     validator_client: RedTeamValidatorClient | None = None,
     epistemic_client: EpistemicReviewerClient | None = None,
@@ -68,6 +70,7 @@ def auto_analyze(
     # Step 1: Fetch raw bundles
     scan_result = run_live_scan(
         [ticker], out_dir=out_dir, stop_at="raw-bundle", config=config,
+        fmp_transport=fmp_transport,
     )
 
     # Step 2: Load merged bundle

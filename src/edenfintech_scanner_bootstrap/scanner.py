@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .automation import AutoAnalyzeResult, auto_analyze
 from .config import AppConfig
-from .fmp import FmpClient, build_raw_candidate_from_fmp
+from .fmp import FmpClient, FmpTransport, build_raw_candidate_from_fmp
 from .hardening import (
     ExceptionPanelResult,
     cagr_exception_panel,
@@ -23,7 +23,6 @@ from .hardening import (
     score_evidence_quality,
 )
 from .pipeline import ScanArtifacts, run_scan
-from .reporting import render_scan_markdown
 from .sector import check_sector_freshness
 
 logger = logging.getLogger(__name__)
@@ -289,6 +288,7 @@ def auto_scan(
     *,
     config: AppConfig,
     out_dir: Path | None = None,
+    fmp_transport: FmpTransport | None = None,
     judge_transport=None,
     analyst_transport=None,
     validator_transport=None,
@@ -315,6 +315,7 @@ def auto_scan(
                 ticker,
                 config=config,
                 out_dir=out_dir / ticker / "raw",
+                fmp_transport=fmp_transport,
                 analyst_client=analyst_client,
                 validator_client=validator_client,
                 epistemic_client=epistemic_client,
@@ -358,6 +359,7 @@ def sector_scan(
     max_workers: int = 3,
     excluded_industries: list[str] | None = None,
     fmp_client: FmpClient | None = None,
+    fmp_transport: FmpTransport | None = None,
     judge_transport=None,
     analyst_transport=None,
     validator_transport=None,
@@ -432,6 +434,7 @@ def sector_scan(
                 ticker,
                 config=config,
                 out_dir=out_dir / ticker / "raw",
+                fmp_transport=fmp_transport,
                 analyst_client=analyst_client,
                 validator_client=validator_client,
                 epistemic_client=epistemic_client,
