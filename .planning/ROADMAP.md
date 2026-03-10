@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 4: Review Agents** - Architecturally blind epistemic reviewer and adversarial red-team validator
 - [x] **Phase 5: Automated Finalization** - End-to-end orchestration wiring analyst, validator, and epistemic reviewer with retry loop (completed 2026-03-10)
 - [ ] **Phase 6: Scan Modes and Hardening** - Individual and sector scan commands plus bias detection and evidence quality gates
-- [ ] **Phase 7: Holding Review** - Forward return refresh, thesis integrity, sell triggers, and replacement gate computation
+- [x] **Phase 7: Holding Review** - Forward return refresh, thesis integrity, sell triggers, and replacement gate computation (completed 2026-03-10)
 
 ## Phase Details
 
@@ -143,4 +143,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Review Agents | 1/2 | In Progress|  |
 | 5. Automated Finalization | 2/2 | Complete   | 2026-03-10 |
 | 6. Scan Modes and Hardening | 1/2 | In Progress|  |
-| 7. Holding Review | 0/2 | Not started | - |
+| 7. Holding Review | 2/2 | Complete   | 2026-03-10 |

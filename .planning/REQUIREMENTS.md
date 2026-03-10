@@ -82,7 +82,7 @@ Requirements for full integration. Each maps to roadmap phases.
 - [x] **HOLD-03**: Sell trigger evaluation — target reached + forward <30% hurdle; rapid rerating + forward <10-15%/yr; thesis break
 - [x] **HOLD-04**: Replacement gate computation — Gate A: forward CAGR delta >15pp; Gate B: downside profile equal or better
 - [x] **HOLD-05**: Fresh-capital vs legacy weight tracking (current_weight vs fresh_capital_max_weight)
-- [ ] **HOLD-06**: CLI command `review-holding TICKER [TICKER...]`
+- [x] **HOLD-06**: CLI command `review-holding TICKER [TICKER...]`
 
 ## v2 Requirements
 
@@ -165,7 +165,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HOLD-03 | Phase 7 | Complete |
 | HOLD-04 | Phase 7 | Complete |
 | HOLD-05 | Phase 7 | Complete |
-| HOLD-06 | Phase 7 | Pending |
+| HOLD-06 | Phase 7 | Complete |
 
 **Coverage:**
 - v1 requirements: 47 total
