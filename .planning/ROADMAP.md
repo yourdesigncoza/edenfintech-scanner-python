@@ -32,11 +32,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Empty or error FMP responses are never written to cache (verified by fixture test)
   4. `validate-assets` passes with enriched schemas containing catalyst_stack, invalidation_triggers, decision_memo, issues_and_fixes, setup_pattern, and stretch_case
   5. Pipeline rejects a scan-input with zero HARD/MEDIUM catalyst_stack entries and rejects when all issues_and_fixes are ANNOUNCED_ONLY
-**Plans**: TBD
+**Plans**: 2 plans (Wave 1 parallel)
 
 Plans:
-- [ ] 01-01: FMP caching layer
-- [ ] 01-02: Schema enrichments and pipeline gates
+- [ ] 01-01-PLAN.md — FMP caching layer with TTLs, --fresh bypass, cache-status/cache-clear CLI
+- [ ] 01-02-PLAN.md — Schema enrichments (6 Codex fields) and pipeline validation gates
 
 ### Phase 2: Sector Knowledge Framework
 **Goal**: Operator can hydrate sector research via CLI and the pipeline loads validated sector knowledge for any previously hydrated sector
@@ -119,7 +119,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. `review-holding TICKER` recomputes target price and forward CAGR from current price using original valuation inputs
   2. Thesis integrity checklist produces structured improved/degraded/unchanged/invalidated assessment matched against the holding's invalidation_triggers
-  3. Sell triggers fire correctly: target reached with forward < 30% hurdle, rapid rerating with forward < 10-15%/yr, thesis break from invalidation_triggers
+  3. Sell triggers fire correctly: target reached with forward < 30% hurdle, rapid rerating + forward <10-15%/yr, thesis break from invalidation_triggers
   4. Replacement gate computes Gate A (forward CAGR delta > 15pp) and Gate B (downside profile equal or better) with appropriate flags
   5. Output includes fresh_capital_max_weight alongside current_weight for legacy vs fresh capital comparison
 **Plans**: TBD
