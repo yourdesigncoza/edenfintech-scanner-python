@@ -27,10 +27,10 @@ Requirements for full integration. Each maps to roadmap phases.
 
 ### Sector Knowledge
 
-- [ ] **SECT-01**: `sector.py` module with `hydrate_sector()`, `load_sector_knowledge()`, `check_sector_freshness()`
-- [ ] **SECT-02**: Sector schema with per-sub-sector: key metrics, valuation approach, regulatory landscape, historical precedents, moat sources, kill factors, FCF margin ranges, typical multiples
+- [x] **SECT-01**: `sector.py` module with `hydrate_sector()`, `load_sector_knowledge()`, `check_sector_freshness()`
+- [x] **SECT-02**: Sector schema with per-sub-sector: key metrics, valuation approach, regulatory landscape, historical precedents, moat sources, kill factors, FCF margin ranges, typical multiples
 - [ ] **SECT-03**: Gemini grounded search integration (8 queries per sub-sector via google-genai SDK)
-- [ ] **SECT-04**: Storage at `data/sectors/<sector-slug>/knowledge.json` with `data/sectors/registry.json` and 180-day staleness threshold
+- [x] **SECT-04**: Storage at `data/sectors/<sector-slug>/knowledge.json` with `data/sectors/registry.json` and 180-day staleness threshold
 - [ ] **SECT-05**: CLI commands `hydrate-sector` and `sector-status`
 
 ### Analyst Agent
@@ -131,10 +131,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCHM-06 | Phase 1 | Pending |
 | SCHM-07 | Phase 1 | Pending |
 | SCHM-08 | Phase 1 | Pending |
-| SECT-01 | Phase 2 | Pending |
-| SECT-02 | Phase 2 | Pending |
+| SECT-01 | Phase 2 | Complete |
+| SECT-02 | Phase 2 | Complete |
 | SECT-03 | Phase 2 | Pending |
-| SECT-04 | Phase 2 | Pending |
+| SECT-04 | Phase 2 | Complete |
 | SECT-05 | Phase 2 | Pending |
 | AGNT-01 | Phase 3 | Pending |
 | AGNT-02 | Phase 3 | Pending |
