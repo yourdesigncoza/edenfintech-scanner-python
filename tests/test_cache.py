@@ -146,8 +146,50 @@ class TestFmpCache(unittest.TestCase):
 
 
 class TestCacheCli(unittest.TestCase):
-    """Tests for CLI integration (Task 2 - added here for co-location)."""
-    pass
+    """Tests for CLI integration."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.cache_dir = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_cache_status_output(self) -> None:
+        """cache-status command prints endpoint counts and expiry info."""
+        from edenfintech_scanner_bootstrap.cache import FmpCacheStore
+        from edenfintech_scanner_bootstrap.cli import _cmd_cache_status
+
+        store = FmpCacheStore(self.cache_dir)
+        store.put("quote", "AAPL", [{"price": 100}])
+        store.put("quote", "MSFT", [{"price": 200}])
+        store.put("profile", "AAPL", [{"name": "Apple"}])
+
+        # Should not raise; returns 0
+        result = _cmd_cache_status(cache_dir=self.cache_dir)
+        self.assertEqual(result, 0)
+
+    def test_cache_clear(self) -> None:
+        """cache-clear command removes all cache files."""
+        from edenfintech_scanner_bootstrap.cache import FmpCacheStore
+        from edenfintech_scanner_bootstrap.cli import _cmd_cache_clear
+
+        store = FmpCacheStore(self.cache_dir)
+        store.put("quote", "AAPL", [{"price": 100}])
+
+        result = _cmd_cache_clear(cache_dir=self.cache_dir)
+        self.assertEqual(result, 0)
+        # Cache dir should still exist but be empty
+        self.assertTrue(self.cache_dir.exists())
+        self.assertEqual(list(self.cache_dir.iterdir()), [])
+
+    def test_fetch_fmp_bundle_fresh_flag(self) -> None:
+        """Parser accepts --fresh flag on fetch-fmp-bundle."""
+        from edenfintech_scanner_bootstrap.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["fetch-fmp-bundle", "AAPL", "--fresh"])
+        self.assertTrue(args.fresh)
 
 
 if __name__ == "__main__":

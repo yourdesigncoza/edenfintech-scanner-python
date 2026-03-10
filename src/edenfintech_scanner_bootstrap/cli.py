@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 from .assets import contract_path, gemini_raw_bundle_schema_path, load_json, scan_input_schema_path, structured_analysis_schema_path
-from .config import load_config
+from .cache import FmpCacheStore, cached_transport
+from .config import discover_project_root, load_config
 from .field_generation import build_structured_analysis_draft_file
 from .fmp import build_fmp_bundle_with_config, write_fmp_bundle
 from .gemini import build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
@@ -203,12 +204,44 @@ def _cmd_run_judge(report_path: str, execution_log_path: str) -> int:
     return 0
 
 
-def _cmd_fetch_fmp_bundle(tickers: list[str], json_out: str | None) -> int:
+def _default_fmp_cache_dir() -> Path:
+    root = discover_project_root()
+    if root is None:
+        root = Path.cwd()
+    return root / "data" / "cache" / "fmp"
+
+
+def _cmd_fetch_fmp_bundle(tickers: list[str], json_out: str | None, fresh: bool = False) -> int:
     config = load_config()
-    bundle = build_fmp_bundle_with_config(tickers, config=config)
+    from .fmp import _default_transport
+    store = FmpCacheStore(_default_fmp_cache_dir())
+    transport = cached_transport(_default_transport, store, fresh=fresh)
+    bundle = build_fmp_bundle_with_config(tickers, config=config, transport=transport)
     if json_out:
         write_fmp_bundle(Path(json_out), bundle)
     print(json.dumps(bundle, indent=2))
+    return 0
+
+
+def _cmd_cache_status(cache_dir: Path | None = None) -> int:
+    store = FmpCacheStore(cache_dir or _default_fmp_cache_dir())
+    status = store.status()
+    if not status:
+        print("Cache is empty.")
+        return 0
+    for endpoint, info in sorted(status.items()):
+        print(f"{endpoint}: {info['count']} entries (TTL: {info['ttl_seconds']}s)")
+        for entry in info["entries"]:
+            expires = entry.get("expires_at")
+            label = f"  expires_at={expires:.0f}" if expires else "  no meta"
+            print(f"  {entry['ticker']}{label}")
+    return 0
+
+
+def _cmd_cache_clear(cache_dir: Path | None = None) -> int:
+    store = FmpCacheStore(cache_dir or _default_fmp_cache_dir())
+    store.clear()
+    print("Cache cleared.")
     return 0
 
 
@@ -252,14 +285,19 @@ def _cmd_run_live_scan(
     focus: str | None,
     research_question: str | None,
     gemini_model: str | None,
+    fresh: bool = False,
 ) -> int:
     config = load_config()
+    from .fmp import _default_transport
+    store = FmpCacheStore(_default_fmp_cache_dir())
+    fmp_transport = cached_transport(_default_transport, store, fresh=fresh)
     result = run_live_scan(
         tickers,
         out_dir=Path(out_dir),
         stop_at=stop_at,
         structured_analysis_path=Path(structured_analysis_path) if structured_analysis_path else None,
         config=config,
+        fmp_transport=fmp_transport,
         focus=focus,
         research_question=research_question,
         gemini_model=gemini_model or "gemini-3-pro-preview",
@@ -284,13 +322,18 @@ def _cmd_build_review_package(
     focus: str | None,
     research_question: str | None,
     gemini_model: str | None,
+    fresh: bool = False,
 ) -> int:
     config = load_config()
+    from .fmp import _default_transport
+    store = FmpCacheStore(_default_fmp_cache_dir())
+    fmp_transport = cached_transport(_default_transport, store, fresh=fresh)
     result = build_review_package(
         tickers,
         out_dir=Path(out_dir),
         structured_analysis_path=Path(structured_analysis_path) if structured_analysis_path else None,
         config=config,
+        fmp_transport=fmp_transport,
         focus=focus,
         research_question=research_question,
         gemini_model=gemini_model or "gemini-3-pro-preview",
@@ -376,6 +419,7 @@ def build_parser() -> argparse.ArgumentParser:
     fetch_fmp_bundle = subparsers.add_parser("fetch-fmp-bundle")
     fetch_fmp_bundle.add_argument("tickers", nargs="+")
     fetch_fmp_bundle.add_argument("--json-out")
+    fetch_fmp_bundle.add_argument("--fresh", action="store_true", help="Bypass cache and fetch live data")
 
     fetch_gemini_bundle = subparsers.add_parser("fetch-gemini-bundle")
     fetch_gemini_bundle.add_argument("tickers", nargs="+")
@@ -397,6 +441,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_live_scan.add_argument("--focus")
     run_live_scan.add_argument("--research-question")
     run_live_scan.add_argument("--gemini-model")
+    run_live_scan.add_argument("--fresh", action="store_true", help="Bypass FMP cache")
 
     build_review_package_parser = subparsers.add_parser("build-review-package")
     build_review_package_parser.add_argument("tickers", nargs="+")
@@ -405,6 +450,10 @@ def build_parser() -> argparse.ArgumentParser:
     build_review_package_parser.add_argument("--focus")
     build_review_package_parser.add_argument("--research-question")
     build_review_package_parser.add_argument("--gemini-model")
+    build_review_package_parser.add_argument("--fresh", action="store_true", help="Bypass FMP cache")
+
+    subparsers.add_parser("cache-status")
+    subparsers.add_parser("cache-clear")
 
     subparsers.add_parser("show-scan-template")
     subparsers.add_parser("show-raw-scan-template")
@@ -462,8 +511,12 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_show_raw_scan_template()
     if args.command == "run-judge":
         return _cmd_run_judge(args.report_path, args.execution_log_path)
+    if args.command == "cache-status":
+        return _cmd_cache_status()
+    if args.command == "cache-clear":
+        return _cmd_cache_clear()
     if args.command == "fetch-fmp-bundle":
-        return _cmd_fetch_fmp_bundle(args.tickers, args.json_out)
+        return _cmd_fetch_fmp_bundle(args.tickers, args.json_out, fresh=args.fresh)
     if args.command == "fetch-gemini-bundle":
         return _cmd_fetch_gemini_bundle(
             args.tickers,
@@ -483,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
             args.focus,
             args.research_question,
             args.gemini_model,
+            fresh=args.fresh,
         )
     if args.command == "build-review-package":
         return _cmd_build_review_package(
@@ -492,6 +546,7 @@ def main(argv: list[str] | None = None) -> int:
             args.focus,
             args.research_question,
             args.gemini_model,
+            fresh=args.fresh,
         )
     if args.command == "show-scan-schema":
         return _cmd_show_scan_schema()
