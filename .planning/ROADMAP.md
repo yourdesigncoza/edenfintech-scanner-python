@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Sector Knowledge Framework** - Gemini grounded search sector hydration with storage, staleness tracking, and CLI (completed 2026-03-10)
 - [x] **Phase 3: Claude Analyst Agent** - LLM agent that fills structured analysis overlays from raw bundles and sector knowledge (completed 2026-03-10)
 - [ ] **Phase 4: Review Agents** - Architecturally blind epistemic reviewer and adversarial red-team validator
-- [ ] **Phase 5: Automated Finalization** - End-to-end orchestration wiring analyst, validator, and epistemic reviewer with retry loop
+- [x] **Phase 5: Automated Finalization** - End-to-end orchestration wiring analyst, validator, and epistemic reviewer with retry loop (completed 2026-03-10)
 - [ ] **Phase 6: Scan Modes and Hardening** - Individual and sector scan commands plus bias detection and evidence quality gates
 - [ ] **Phase 7: Holding Review** - Forward return refresh, thesis integrity, sell triggers, and replacement gate computation
 
@@ -140,6 +140,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 2. Sector Knowledge Framework | 2/2 | Complete   | 2026-03-10 |
 | 3. Claude Analyst Agent | 1/1 | Complete   | 2026-03-10 |
 | 4. Review Agents | 1/2 | In Progress|  |
-| 5. Automated Finalization | 0/2 | Not started | - |
+| 5. Automated Finalization | 2/2 | Complete   | 2026-03-10 |
 | 6. Scan Modes and Hardening | 0/2 | Not started | - |
 | 7. Holding Review | 0/1 | Not started | - |
