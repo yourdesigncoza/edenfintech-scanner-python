@@ -114,3 +114,216 @@ def detect_contradictions(overlay_candidate: dict, raw_candidate: dict) -> list[
             })
 
     return contradictions
+
+
+# ---------------------------------------------------------------------------
+# Red-team question templates
+# ---------------------------------------------------------------------------
+
+RED_TEAM_QUESTIONS = [
+    {
+        "question_id": "bull_falsifiability",
+        "template": "What specific evidence would falsify the bull case?",
+    },
+    {
+        "question_id": "worst_case_completeness",
+        "template": "Does the worst case capture the actual downside scenario?",
+    },
+    {
+        "question_id": "catalyst_plausibility",
+        "template": "Are the stated catalysts realistic within the timeline?",
+    },
+    {
+        "question_id": "competitive_durability",
+        "template": "Can the competitive position survive disruption?",
+    },
+    {
+        "question_id": "management_credibility",
+        "template": "Is management's track record consistent with execution claims?",
+    },
+]
+
+# ---------------------------------------------------------------------------
+# Validator output schema for constrained decoding
+# ---------------------------------------------------------------------------
+
+VALIDATOR_OUTPUT_SCHEMA: dict = {
+    "type": "object",
+    "required": ["verdict", "questions", "objections"],
+    "additionalProperties": False,
+    "properties": {
+        "verdict": {"type": "string", "enum": ["APPROVE", "REJECT"]},
+        "questions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["question_id", "challenge", "evidence", "severity"],
+                "additionalProperties": False,
+                "properties": {
+                    "question_id": {"type": "string"},
+                    "challenge": {"type": "string"},
+                    "evidence": {"type": "string"},
+                    "severity": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+                },
+            },
+        },
+        "objections": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
+# Fields that must NEVER appear in the validator request payload
+_FORBIDDEN_PAYLOAD_KEYS = frozenset({
+    "decision_score", "total_score", "ranking", "effective_probability",
+})
+
+ValidatorTransport = Callable[[dict], dict]
+
+
+class RedTeamValidatorClient:
+    """Client for adversarial red-team validation of analyst overlays."""
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        model: str = "claude-sonnet-4-5-20250514",
+        transport: ValidatorTransport | None = None,
+    ) -> None:
+        self.api_key = api_key
+        self.model = model
+        self.transport = transport or self._default_transport
+
+    def _default_transport(self, request_payload: dict) -> dict:
+        """Default transport using the Anthropic SDK with constrained decoding."""
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=self.api_key)
+        response = client.messages.create(
+            model=self.model,
+            max_tokens=4096,
+            system=request_payload["system"],
+            messages=request_payload["messages"],
+        )
+        text = response.content[0].text
+        return {"text": text, "stop_reason": response.stop_reason}
+
+    def _build_system_prompt(self) -> str:
+        """Build adversarial system prompt with red-team question templates."""
+        question_list = "\n".join(
+            f"  {i + 1}. [{q['question_id']}] {q['template']}"
+            for i, q in enumerate(RED_TEAM_QUESTIONS)
+        )
+        return (
+            "You are an adversarial red-team validator for equity research overlays.\n"
+            "Your job is to challenge the analyst's assumptions and find weaknesses.\n\n"
+            "You MUST answer exactly 5 red-team questions:\n"
+            f"{question_list}\n\n"
+            "For each question, provide:\n"
+            "- question_id: matching the ID above\n"
+            "- challenge: your adversarial challenge to the analyst's position\n"
+            "- evidence: specific evidence supporting your challenge\n"
+            "- severity: HIGH, MEDIUM, or LOW\n\n"
+            "If you find material issues, set verdict to REJECT and list specific objections.\n"
+            "If the overlay is defensible, set verdict to APPROVE with empty objections.\n\n"
+            "Return ONLY valid JSON matching the output schema. No markdown, no commentary."
+        )
+
+    def _build_user_prompt(
+        self,
+        overlay_candidate: dict,
+        raw_candidate: dict,
+        contradictions: list[dict],
+    ) -> str:
+        """Build user prompt with overlay data, raw FMP context, and contradictions.
+
+        Explicitly excludes pipeline scores, rankings, and post-scoring data.
+        """
+        # Extract only safe overlay fields (analysis_inputs, screening_inputs, epistemic_inputs)
+        safe_overlay: dict = {}
+        for key in ("analysis_inputs", "screening_inputs", "epistemic_inputs",
+                     "ticker", "evidence_context", "field_provenance"):
+            if key in overlay_candidate:
+                safe_overlay[key] = overlay_candidate[key]
+
+        # Extract only FMP context from raw candidate
+        safe_raw: dict = {}
+        for key in ("ticker", "fmp_context", "market_snapshot", "industry"):
+            if key in raw_candidate:
+                safe_raw[key] = raw_candidate[key]
+
+        parts = [
+            "ANALYST OVERLAY (analysis_inputs only, pipeline output excluded):",
+            json.dumps(safe_overlay, indent=2),
+            "",
+            "RAW FMP DATA:",
+            json.dumps(safe_raw, indent=2),
+        ]
+
+        if contradictions:
+            parts.extend([
+                "",
+                "PRE-COMPUTED CONTRADICTIONS (deterministic checks found these discrepancies):",
+                json.dumps(contradictions, indent=2),
+            ])
+        else:
+            parts.extend([
+                "",
+                "PRE-COMPUTED CONTRADICTIONS: None found.",
+            ])
+
+        return "\n".join(parts)
+
+    def validate(
+        self,
+        overlay_candidate: dict,
+        raw_candidate: dict,
+        contradictions: list[dict],
+    ) -> dict:
+        """Run red-team validation against an overlay candidate.
+
+        Returns dict with verdict, questions, objections, and contradictions keys.
+        """
+        request_payload = {
+            "system": self._build_system_prompt(),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": self._build_user_prompt(
+                        overlay_candidate, raw_candidate, contradictions
+                    ),
+                }
+            ],
+            "output_schema": VALIDATOR_OUTPUT_SCHEMA,
+        }
+
+        response = self.transport(request_payload)
+        raw_text = response["text"]
+        result = json.loads(raw_text)
+
+        # Enrich result with contradictions
+        result["contradictions"] = contradictions
+        return result
+
+
+def validate_overlay(
+    overlay_candidate: dict,
+    raw_candidate: dict,
+    *,
+    client: RedTeamValidatorClient | None = None,
+) -> dict:
+    """Top-level validation function: deterministic contradictions first, then LLM red-team.
+
+    Runs detect_contradictions() first (per research: deterministic before LLM),
+    then passes contradictions into the LLM validator context.
+
+    Returns enriched result with verdict, questions, objections, contradictions keys.
+    """
+    contradictions = detect_contradictions(overlay_candidate, raw_candidate)
+
+    if client is None:
+        from .config import load_config
+        config = load_config()
+        config.require("anthropic_api_key")
+        client = RedTeamValidatorClient(config.anthropic_api_key, model=config.analyst_model)
+
+    return client.validate(overlay_candidate, raw_candidate, contradictions)
