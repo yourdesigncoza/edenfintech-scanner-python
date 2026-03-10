@@ -1,6 +1,7 @@
-"""Tests for hardening gates: probability anchoring and evidence quality scoring."""
+"""Tests for hardening gates: probability anchoring, evidence quality, CAGR exception panel."""
 from __future__ import annotations
 
+import json
 import unittest
 
 
@@ -124,6 +125,106 @@ class TestEvidenceQuality(unittest.TestCase):
         result = score_evidence_quality({})
         self.assertEqual(result["total_citations"], 0)
         self.assertEqual(result["concrete_ratio"], 0.0)
+
+
+class TestCagrExceptionPanel(unittest.TestCase):
+    """Tests for cagr_exception_panel with 3-agent unanimous vote."""
+
+    SAMPLE_OVERLAY = {
+        "ticker": "ACME",
+        "analysis_inputs": {
+            "thesis_summary": "Turnaround play with strong FCF generation",
+            "catalyst_stack": [
+                {"catalyst": "New CEO with proven track record"},
+            ],
+            "key_risks": ["Cyclical demand exposure", "High leverage"],
+            "base_case_assumptions": {"cagr_pct": 25.0},
+        },
+    }
+
+    SAMPLE_RAW = {
+        "ticker": "ACME",
+        "revenue": [100, 110, 120],
+    }
+
+    def _make_transport(self, approve: bool, reasoning: str = "Test reasoning"):
+        """Return a mock transport that returns a canned vote."""
+        def transport(payload: dict) -> dict:
+            return {
+                "text": json.dumps({"approve": approve, "reasoning": reasoning}),
+                "stop_reason": "end_turn",
+            }
+        return transport
+
+    def test_all_approve_returns_approved_unanimous(self):
+        from edenfintech_scanner_bootstrap.hardening import cagr_exception_panel
+
+        result = cagr_exception_panel(
+            self.SAMPLE_OVERLAY,
+            self.SAMPLE_RAW,
+            analyst_transport=self._make_transport(True, "Strong FCF supports exception"),
+            validator_transport=self._make_transport(True, "Evidence is solid"),
+            epistemic_transport=self._make_transport(True, "Precedent exists"),
+        )
+        self.assertTrue(result.approved)
+        self.assertTrue(result.unanimous)
+        self.assertEqual(len(result.votes), 3)
+
+    def test_one_reject_returns_not_approved(self):
+        from edenfintech_scanner_bootstrap.hardening import cagr_exception_panel
+
+        result = cagr_exception_panel(
+            self.SAMPLE_OVERLAY,
+            self.SAMPLE_RAW,
+            analyst_transport=self._make_transport(True),
+            validator_transport=self._make_transport(False, "Insufficient evidence"),
+            epistemic_transport=self._make_transport(True),
+        )
+        self.assertFalse(result.approved)
+        self.assertFalse(result.unanimous)
+
+    def test_all_reject_returns_not_approved_unanimous(self):
+        from edenfintech_scanner_bootstrap.hardening import cagr_exception_panel
+
+        result = cagr_exception_panel(
+            self.SAMPLE_OVERLAY,
+            self.SAMPLE_RAW,
+            analyst_transport=self._make_transport(False),
+            validator_transport=self._make_transport(False),
+            epistemic_transport=self._make_transport(False),
+        )
+        self.assertFalse(result.approved)
+        self.assertTrue(result.unanimous)
+
+    def test_votes_contain_agent_name_and_fields(self):
+        from edenfintech_scanner_bootstrap.hardening import cagr_exception_panel
+
+        result = cagr_exception_panel(
+            self.SAMPLE_OVERLAY,
+            self.SAMPLE_RAW,
+            analyst_transport=self._make_transport(True, "Analyst approves"),
+            validator_transport=self._make_transport(False, "Validator rejects"),
+            epistemic_transport=self._make_transport(True, "Epistemic approves"),
+        )
+        agent_names = {v.agent for v in result.votes}
+        self.assertEqual(agent_names, {"analyst", "validator", "epistemic"})
+        for vote in result.votes:
+            self.assertIsInstance(vote.agent, str)
+            self.assertIsInstance(vote.approve, bool)
+            self.assertIsInstance(vote.reasoning, str)
+            self.assertTrue(len(vote.reasoning) > 0)
+
+    def test_result_has_exactly_3_votes(self):
+        from edenfintech_scanner_bootstrap.hardening import cagr_exception_panel
+
+        result = cagr_exception_panel(
+            self.SAMPLE_OVERLAY,
+            self.SAMPLE_RAW,
+            analyst_transport=self._make_transport(True),
+            validator_transport=self._make_transport(True),
+            epistemic_transport=self._make_transport(True),
+        )
+        self.assertEqual(len(result.votes), 3)
 
 
 if __name__ == "__main__":
