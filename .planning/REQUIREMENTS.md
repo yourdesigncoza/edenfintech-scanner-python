@@ -59,9 +59,9 @@ Requirements for full integration. Each maps to roadmap phases.
 ### Automation
 
 - [ ] **AUTO-01**: `auto_analyze(ticker, config)` orchestrates fetch → sector → analyst → validator → epistemic → finalize
-- [ ] **AUTO-02**: Rejected overlays retry with validator objections (max 2 retries)
-- [ ] **AUTO-03**: New provenance statuses: LLM_DRAFT, LLM_CONFIRMED, LLM_EDITED in structured_analysis.py
-- [ ] **AUTO-04**: `finalize_structured_analysis()` accepts `reviewer="llm:<model-id>"`
+- [x] **AUTO-02**: Rejected overlays retry with validator objections (max 2 retries)
+- [x] **AUTO-03**: New provenance statuses: LLM_DRAFT, LLM_CONFIRMED, LLM_EDITED in structured_analysis.py
+- [x] **AUTO-04**: `finalize_structured_analysis()` accepts `reviewer="llm:<model-id>"`
 
 ### Scan Modes
 
@@ -151,9 +151,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VALD-02 | Phase 4 | Complete |
 | VALD-03 | Phase 4 | Complete |
 | AUTO-01 | Phase 5 | Pending |
-| AUTO-02 | Phase 5 | Pending |
-| AUTO-03 | Phase 5 | Pending |
-| AUTO-04 | Phase 5 | Pending |
+| AUTO-02 | Phase 5 | Complete |
+| AUTO-03 | Phase 5 | Complete |
+| AUTO-04 | Phase 5 | Complete |
 | SCAN-01 | Phase 6 | Pending |
 | SCAN-02 | Phase 6 | Pending |
 | SCAN-03 | Phase 6 | Pending |
