@@ -1,0 +1,320 @@
+"""Sector knowledge hydration, loading, and staleness tracking.
+
+Hydrates per-sub-sector structured research via Gemini grounded search
+and stores validated JSON at ``data/sectors/<slug>/knowledge.json``.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+from datetime import datetime
+from pathlib import Path
+
+from .assets import load_json, sector_knowledge_schema_path
+from .config import AppConfig, discover_project_root, load_config
+from .gemini import GeminiClient, _extract_response_text
+from .schemas import validate_instance
+
+STALENESS_DAYS = 180
+SECTOR_DATA_DIR = "data/sectors"
+REGISTRY_FILENAME = "registry.json"
+
+KNOWLEDGE_CATEGORIES = [
+    "key_metrics",
+    "valuation_approach",
+    "regulatory_landscape",
+    "historical_precedents",
+    "moat_sources",
+    "kill_factors",
+    "fcf_margin_ranges",
+    "typical_multiples",
+]
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+def _slugify(name: str) -> str:
+    """Convert a sector name to a filesystem-safe slug."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def _sector_dir(project_root: Path, sector_slug: str) -> Path:
+    return project_root / SECTOR_DATA_DIR / sector_slug
+
+
+def _registry_path(project_root: Path) -> Path:
+    return project_root / SECTOR_DATA_DIR / REGISTRY_FILENAME
+
+
+def _load_registry(project_root: Path) -> dict:
+    path = _registry_path(project_root)
+    if path.exists():
+        return json.loads(path.read_text())
+    return {"sectors": {}}
+
+
+def _update_registry(
+    project_root: Path,
+    sector_name: str,
+    sector_slug: str,
+    sub_sectors: list[str],
+) -> None:
+    registry = _load_registry(project_root)
+    registry["sectors"][sector_slug] = {
+        "sector_name": sector_name,
+        "hydrated_at": datetime.now().isoformat(),
+        "sub_sectors": sub_sectors,
+        "knowledge_path": f"{SECTOR_DATA_DIR}/{sector_slug}/knowledge.json",
+    }
+    path = _registry_path(project_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(registry, indent=2))
+
+
+def _sector_query_prompt(sub_sector: str, category: str) -> str:
+    """Return the Gemini prompt for a given sub-sector and knowledge category."""
+    templates = {
+        "key_metrics": (
+            f"For the {sub_sector} sub-sector, identify the key financial metrics "
+            "investors use to evaluate companies. Include margins, growth rates, "
+            "leverage ratios, and efficiency metrics specific to this industry."
+        ),
+        "valuation_approach": (
+            f"For the {sub_sector} sub-sector, identify what valuation methods and "
+            "typical multiples are used for companies in this industry. Include "
+            "DCF assumptions, comparable transaction multiples, and sector-specific "
+            "valuation frameworks."
+        ),
+        "regulatory_landscape": (
+            f"For the {sub_sector} sub-sector, describe the current regulatory "
+            "environment. Include key regulations, compliance requirements, "
+            "pending legislation, and regulatory risks."
+        ),
+        "historical_precedents": (
+            f"For the {sub_sector} sub-sector, identify notable turnaround, recovery, "
+            "or value-destruction precedents. Include specific companies, timelines, "
+            "and outcomes."
+        ),
+        "moat_sources": (
+            f"For the {sub_sector} sub-sector, identify the primary sources of "
+            "competitive advantage. Include brand power, network effects, switching "
+            "costs, scale economies, and intangible assets."
+        ),
+        "kill_factors": (
+            f"For the {sub_sector} sub-sector, identify factors that typically cause "
+            "permanent value destruction. Include regulatory risks, technology disruption, "
+            "demand destruction, and structural decline indicators."
+        ),
+        "fcf_margin_ranges": (
+            f"For the {sub_sector} sub-sector, identify typical free cash flow margin "
+            "ranges. Include best-in-class, average, and below-average ranges with "
+            "specific company examples where possible."
+        ),
+        "typical_multiples": (
+            f"For the {sub_sector} sub-sector, identify typical valuation multiples "
+            "including P/FCF, EV/EBITDA, and P/S ratios. Differentiate between "
+            "premium and average performers."
+        ),
+    }
+    return templates[category]
+
+
+def _sector_response_schema(category: str) -> dict:
+    """Return a JSON Schema for a single category's Gemini response."""
+    return {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+            "items": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "required": ["claim", "source_title", "source_url"],
+                    "properties": {
+                        "claim": {"type": "string"},
+                        "source_title": {"type": "string"},
+                        "source_url": {"type": "string"},
+                        "confidence_note": {"type": "string"},
+                    },
+                },
+            }
+        },
+    }
+
+
+def _hydrate_sub_sector(
+    sub_sector: str,
+    sector_name: str,
+    client: GeminiClient,
+) -> dict:
+    """Run 8 Gemini queries for one sub-sector, return a sub_sector_knowledge object."""
+    result: dict = {"sub_sector_name": sub_sector}
+
+    for i, category in enumerate(KNOWLEDGE_CATEGORIES):
+        if i > 0:
+            time.sleep(2)
+
+        prompt = _sector_query_prompt(sub_sector, category)
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}],
+                }
+            ],
+            "tools": [{"googleSearch": {}}, {"urlContext": {}}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseJsonSchema": _sector_response_schema(category),
+            },
+        }
+        response = client.transport(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{client.model}:generateContent",
+            {
+                "Content-Type": "application/json",
+                "x-goog-api-key": client.api_key,
+            },
+            payload,
+        )
+        response_text = _extract_response_text(response)
+        parsed = json.loads(response_text)
+        result[category] = parsed["items"]
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def hydrate_sector(
+    sector_name: str,
+    *,
+    sub_sectors: list[str] | None = None,
+    client: GeminiClient | None = None,
+    config: AppConfig | None = None,
+    project_root: Path | None = None,
+) -> dict:
+    """Hydrate sector knowledge via Gemini grounded search.
+
+    Parameters
+    ----------
+    sector_name:
+        Human-readable sector name (e.g. "Consumer Defensive").
+    sub_sectors:
+        List of sub-sector names to hydrate. Required for now;
+        FMP screener discovery is planned for Phase 6.
+    client:
+        Pre-configured GeminiClient. If *None*, one is created from *config*.
+    config:
+        AppConfig instance. If *None*, loaded from environment.
+    project_root:
+        Project root for data storage. Auto-discovered if *None*.
+    """
+    if not sub_sectors:
+        raise ValueError(
+            "sub_sectors is required. Automatic discovery via FMP screener "
+            "is planned for Phase 6."
+        )
+
+    app_config = config or load_config()
+    if client is None:
+        app_config.require("gemini_api_key")
+    resolved_client = client or GeminiClient(app_config.gemini_api_key)
+    root = project_root or discover_project_root() or Path.cwd()
+
+    sector_slug = _slugify(sector_name)
+
+    sub_sector_data = []
+    for sub_sector in sub_sectors:
+        knowledge = _hydrate_sub_sector(sub_sector, sector_name, resolved_client)
+        sub_sector_data.append(knowledge)
+
+    knowledge_doc = {
+        "sector_name": sector_name,
+        "sector_slug": sector_slug,
+        "hydrated_at": datetime.now().isoformat(),
+        "model": resolved_client.model,
+        "sub_sectors": sub_sector_data,
+    }
+
+    # Validate against schema
+    schema = load_json(sector_knowledge_schema_path())
+    validate_instance(knowledge_doc, schema)
+
+    # Write to disk
+    out_dir = _sector_dir(root, sector_slug)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "knowledge.json"
+    out_path.write_text(json.dumps(knowledge_doc, indent=2))
+
+    # Update registry
+    _update_registry(root, sector_name, sector_slug, sub_sectors)
+
+    return knowledge_doc
+
+
+def load_sector_knowledge(
+    sector_name: str,
+    *,
+    project_root: Path | None = None,
+) -> dict:
+    """Load sector knowledge from disk and validate against schema.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the sector has not been hydrated.
+    """
+    root = project_root or discover_project_root() or Path.cwd()
+    sector_slug = _slugify(sector_name)
+    knowledge_path = _sector_dir(root, sector_slug) / "knowledge.json"
+
+    if not knowledge_path.exists():
+        raise FileNotFoundError(
+            f"Sector '{sector_name}' has not been hydrated. "
+            f"Expected knowledge file at: {knowledge_path}"
+        )
+
+    knowledge_doc = json.loads(knowledge_path.read_text())
+    schema = load_json(sector_knowledge_schema_path())
+    validate_instance(knowledge_doc, schema)
+    return knowledge_doc
+
+
+def check_sector_freshness(
+    sector_name: str,
+    *,
+    project_root: Path | None = None,
+) -> dict:
+    """Check if sector knowledge is stale (older than 180 days).
+
+    Returns
+    -------
+    dict with keys: sector, status, stale, and optionally hydrated_at, age_days.
+    status is one of: "FRESH", "STALE", "NOT_HYDRATED".
+    """
+    root = project_root or discover_project_root() or Path.cwd()
+    registry = _load_registry(root)
+    sector_slug = _slugify(sector_name)
+
+    entry = registry.get("sectors", {}).get(sector_slug)
+    if entry is None:
+        return {"sector": sector_name, "status": "NOT_HYDRATED", "stale": True}
+
+    hydrated_at = datetime.fromisoformat(entry["hydrated_at"])
+    age_days = (datetime.now() - hydrated_at).days
+    is_stale = age_days > STALENESS_DAYS
+
+    return {
+        "sector": sector_name,
+        "status": "STALE" if is_stale else "FRESH",
+        "stale": is_stale,
+        "hydrated_at": entry["hydrated_at"],
+        "age_days": age_days,
+    }
