@@ -71,9 +71,9 @@ Requirements for full integration. Each maps to roadmap phases.
 
 ### Hardening
 
-- [ ] **HARD-01**: 20% CAGR exception panel — analyst, validator, epistemic reviewer each independently vote; unanimous approval required; full reasoning logged
-- [ ] **HARD-02**: Probability anchoring detection — flag PROBABILITY_ANCHORING_SUSPECT when exactly 60% + friction risk type; require justification; force to 50% if weak
-- [ ] **HARD-03**: Evidence quality scoring — count concrete citations vs vague references; below threshold adds methodology note warning
+- [x] **HARD-01**: 20% CAGR exception panel — analyst, validator, epistemic reviewer each independently vote; unanimous approval required; full reasoning logged
+- [x] **HARD-02**: Probability anchoring detection — flag PROBABILITY_ANCHORING_SUSPECT when exactly 60% + friction risk type; require justification; force to 50% if weak
+- [x] **HARD-03**: Evidence quality scoring — count concrete citations vs vague references; below threshold adds methodology note warning
 
 ### Holding Review
 
@@ -157,9 +157,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCAN-01 | Phase 6 | Pending |
 | SCAN-02 | Phase 6 | Pending |
 | SCAN-03 | Phase 6 | Pending |
-| HARD-01 | Phase 6 | Pending |
-| HARD-02 | Phase 6 | Pending |
-| HARD-03 | Phase 6 | Pending |
+| HARD-01 | Phase 6 | Complete |
+| HARD-02 | Phase 6 | Complete |
+| HARD-03 | Phase 6 | Complete |
 | HOLD-01 | Phase 7 | Pending |
 | HOLD-02 | Phase 7 | Pending |
 | HOLD-03 | Phase 7 | Pending |

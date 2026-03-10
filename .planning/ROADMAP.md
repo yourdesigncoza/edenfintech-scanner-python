@@ -141,5 +141,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. Claude Analyst Agent | 1/1 | Complete   | 2026-03-10 |
 | 4. Review Agents | 1/2 | In Progress|  |
 | 5. Automated Finalization | 2/2 | Complete   | 2026-03-10 |
-| 6. Scan Modes and Hardening | 0/2 | Not started | - |
+| 6. Scan Modes and Hardening | 1/2 | In Progress|  |
 | 7. Holding Review | 0/1 | Not started | - |
