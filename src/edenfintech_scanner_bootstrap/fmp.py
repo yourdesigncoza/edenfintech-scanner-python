@@ -101,6 +101,13 @@ class FmpClient:
             raise RuntimeError(f"FMP cash flow response missing for {ticker}")
         return _sorted_desc(payload)
 
+    def stock_screener(self, sector: str, exchange: str = "NYSE", **filters: str) -> list[dict]:
+        params = {"sector": sector, "exchange": exchange, **filters}
+        payload = self._get("stock-screener", **params)
+        if not isinstance(payload, list):
+            raise RuntimeError(f"FMP screener response malformed for sector={sector}")
+        return payload
+
 
 def _pct_off_ath(current_price: float, all_time_high: float) -> float:
     if all_time_high <= 0:
