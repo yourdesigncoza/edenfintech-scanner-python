@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Automated Finalization** - End-to-end orchestration wiring analyst, validator, and epistemic reviewer with retry loop (completed 2026-03-10)
 - [ ] **Phase 6: Scan Modes and Hardening** - Individual and sector scan commands plus bias detection and evidence quality gates
 - [x] **Phase 7: Holding Review** - Forward return refresh, thesis integrity, sell triggers, and replacement gate computation (completed 2026-03-10)
+- [ ] **Phase 8: Wire FMP Cache into Auto-Scan Paths** - Thread cache layer through auto_analyze and scanner orchestrators (gap closure)
 
 ## Phase Details
 
@@ -130,10 +131,25 @@ Plans:
 - [ ] 07-01-PLAN.md — Core holding review module with TDD: forward refresh, thesis integrity, sell triggers, replacement gate, fresh capital weight
 - [ ] 07-02-PLAN.md — Holdings manifest schema and review-holding CLI command
 
+### Phase 8: Wire FMP Cache into Auto-Scan Paths
+**Goal**: Auto-scan and sector-scan use the FMP cache layer identically to manual CLI paths, eliminating uncached API calls and honoring --fresh
+**Depends on**: Phase 1 (cache layer), Phase 5 (auto_analyze), Phase 6 (scanner)
+**Requirements**: CACHE-01, CACHE-02, CACHE-03
+**Gap Closure:** Closes gaps from v1.0 milestone audit
+**Success Criteria** (what must be TRUE):
+  1. `auto-scan TICKER` uses cached FMP transport; second run for same ticker shows zero FMP HTTP calls (cache hits)
+  2. `sector-scan "Sector"` constructs FmpCacheStore and threads cached_transport through to every auto_analyze call
+  3. `--fresh` flag on auto-scan/sector-scan constructs cache with force_fresh=True, bypassing cached entries
+  4. Empty/error FMP responses are never cached in the auto-scan/sector-scan code paths (existing FmpCacheStore.put() guard is exercised)
+**Plans**: 1 plan
+
+Plans:
+- [ ] 08-01-PLAN.md — Thread fmp_transport through auto_analyze, scanner orchestrators, and CLI handlers
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -144,3 +160,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 5. Automated Finalization | 2/2 | Complete   | 2026-03-10 |
 | 6. Scan Modes and Hardening | 1/2 | In Progress|  |
 | 7. Holding Review | 2/2 | Complete   | 2026-03-10 |
+| 8. Wire FMP Cache into Auto-Scan | 0/1 | Pending    |  |
