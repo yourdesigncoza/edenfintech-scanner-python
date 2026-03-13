@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .analyst import ClaudeAnalystClient, generate_llm_analysis_draft
+from .cache import GeminiCacheStore
 from .config import AppConfig, load_config
 from .field_generation import generate_structured_analysis_draft
 from .fmp import FmpTransport, build_fmp_bundle_with_config, write_fmp_bundle
@@ -27,6 +28,28 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2))
 
 
+def _assemble_gemini_bundle(tickers: list[str], candidates: dict[str, dict]) -> dict:
+    """Build a gemini bundle wrapper from cached per-ticker candidates."""
+    from datetime import date
+
+    raw_candidates = [candidates[t] for t in tickers if t in candidates]
+    return {
+        "title": f"EdenFinTech Gemini Raw Bundle - {', '.join(tickers)}",
+        "scan_date": str(date.today()),
+        "version": "v1",
+        "scan_parameters": {
+            "scan_mode": "specific_tickers",
+            "focus": ", ".join(tickers),
+            "api": "Gemini",
+        },
+        "methodology_notes": [
+            "This bundle was fetched from Gemini and contains sourced qualitative evidence only.",
+            "It does not emit screening verdicts, final classifications, probability bands, or pass/reject decisions.",
+        ],
+        "raw_candidates": raw_candidates,
+    }
+
+
 def run_live_scan(
     tickers: list[str],
     *,
@@ -40,6 +63,7 @@ def run_live_scan(
     research_question: str | None = None,
     gemini_model: str = DEFAULT_GEMINI_MODEL,
     use_analyst: bool = False,
+    gemini_cache: GeminiCacheStore | None = None,
 ) -> LiveScanResult:
     if stop_at not in {"raw-bundle", "scan-input", "report"}:
         raise ValueError(f"unsupported stop_at value: {stop_at}")
@@ -50,31 +74,73 @@ def run_live_scan(
     out_dir.mkdir(parents=True, exist_ok=True)
     written_paths: dict[str, Path] = {}
 
-    fmp_bundle = build_fmp_bundle_with_config(
-        tickers,
-        config=resolved_config,
-        transport=fmp_transport,
-    )
-    fmp_path = out_dir / "fmp-raw.json"
-    write_fmp_bundle(fmp_path, fmp_bundle)
-    written_paths["fmp_raw"] = fmp_path
+    print(f"  [{', '.join(tickers)}] FMP fetch ...", end=" ", flush=True)
+    try:
+        fmp_bundle = build_fmp_bundle_with_config(
+            tickers,
+            config=resolved_config,
+            transport=fmp_transport,
+        )
+        fmp_path = out_dir / "fmp-raw.json"
+        write_fmp_bundle(fmp_path, fmp_bundle)
+        written_paths["fmp_raw"] = fmp_path
+        print("OK")
+    except Exception:
+        print("FAILED")
+        raise
 
-    gemini_bundle = build_gemini_bundle_with_config(
-        tickers,
-        config=resolved_config,
-        transport=gemini_transport,
-        focus=focus,
-        research_question=research_question,
-        model=gemini_model,
-    )
-    gemini_path = out_dir / "gemini-raw.json"
-    _write_json(gemini_path, gemini_bundle)
-    written_paths["gemini_raw"] = gemini_path
+    try:
+        if gemini_cache is not None:
+            cached_candidates: dict[str, dict] = {}
+            uncached_tickers: list[str] = []
+            for t in tickers:
+                hit = gemini_cache.get(t)
+                if hit:
+                    cached_candidates[t] = hit
+                else:
+                    uncached_tickers.append(t)
+            n_cached = len(cached_candidates)
+            n_fresh = len(uncached_tickers)
+            print(f"  [{', '.join(tickers)}] Gemini fetch ({n_cached} cached, {n_fresh} fresh) ...", end=" ", flush=True)
+            if uncached_tickers:
+                partial = build_gemini_bundle_with_config(
+                    uncached_tickers,
+                    config=resolved_config,
+                    transport=gemini_transport,
+                    focus=focus,
+                    research_question=research_question,
+                    model=gemini_model,
+                )
+                for cand in partial.get("raw_candidates", []):
+                    ticker_key = cand.get("ticker", "")
+                    if ticker_key:
+                        gemini_cache.put(ticker_key, cand)
+                        cached_candidates[ticker_key] = cand
+            gemini_bundle = _assemble_gemini_bundle(tickers, cached_candidates)
+        else:
+            print(f"  [{', '.join(tickers)}] Gemini fetch ...", end=" ", flush=True)
+            gemini_bundle = build_gemini_bundle_with_config(
+                tickers,
+                config=resolved_config,
+                transport=gemini_transport,
+                focus=focus,
+                research_question=research_question,
+                model=gemini_model,
+            )
+        gemini_path = out_dir / "gemini-raw.json"
+        _write_json(gemini_path, gemini_bundle)
+        written_paths["gemini_raw"] = gemini_path
+        print("OK")
+    except Exception:
+        print("FAILED")
+        raise
 
+    print(f"  [{', '.join(tickers)}] Merge bundles ...", end=" ", flush=True)
     merged_bundle = merge_fmp_and_gemini_bundles(fmp_bundle, gemini_bundle)
     merged_path = out_dir / "merged-raw.json"
     _write_json(merged_path, merged_bundle)
     written_paths["merged_raw"] = merged_path
+    print("OK")
 
     structured_template = structured_analysis_template(merged_bundle)
     structured_template_path = out_dir / "structured-analysis-template.json"

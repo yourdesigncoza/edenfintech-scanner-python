@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
+from .llm_transport import default_anthropic_transport, parse_llm_json
+
 
 # ---------------------------------------------------------------------------
 # EPST-01: Type-level information barrier
@@ -186,7 +188,7 @@ class EpistemicReviewerClient:
         self,
         api_key: str,
         *,
-        model: str = "claude-sonnet-4-5-20250514",
+        model: str = "claude-haiku-4-5-20251001",
         transport: EpistemicReviewerTransport | None = None,
     ) -> None:
         self.api_key = api_key
@@ -195,17 +197,12 @@ class EpistemicReviewerClient:
 
     def _default_transport(self, request_payload: dict) -> dict:
         """Default transport using the Anthropic SDK."""
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=self.api_key)
-        response = client.messages.create(
+        return default_anthropic_transport(
+            request_payload,
+            api_key=self.api_key,
             model=self.model,
             max_tokens=4096,
-            system=request_payload["system"],
-            messages=request_payload["messages"],
         )
-        text = response.content[0].text
-        return {"text": text, "stop_reason": response.stop_reason}
 
     def _build_system_prompt(self) -> str:
         """Build system prompt with PCS question definitions."""
@@ -282,8 +279,7 @@ class EpistemicReviewerClient:
         }
 
         response = self.transport(request_payload)
-        raw_text = response["text"]
-        pcs_answers = json.loads(raw_text)
+        pcs_answers = parse_llm_json(response, agent="epistemic_reviewer")
         return pcs_answers
 
 

@@ -73,11 +73,17 @@ def _default_transport(url: str, headers: dict[str, str], payload: dict) -> dict
         headers=headers,
         method="POST",
     )
-    try:
-        with request.urlopen(http_request, timeout=90) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except error.URLError as exc:
-        raise RuntimeError(f"Gemini request failed: {exc}") from exc
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            with request.urlopen(http_request, timeout=120) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except error.URLError as exc:
+            last_exc = exc
+            if attempt == 0:
+                import time
+                time.sleep(2)
+    raise RuntimeError(f"Gemini request failed after 2 attempts: {last_exc}") from last_exc
 
 
 def _reject_unknown_keys(value: dict, allowed: set[str], label: str) -> None:

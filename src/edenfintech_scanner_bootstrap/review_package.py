@@ -5,6 +5,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from .cache import GeminiCacheStore
 from .config import AppConfig
 from .fmp import FmpTransport
 from .gemini import DEFAULT_GEMINI_MODEL, GeminiTransport
@@ -78,6 +79,7 @@ def build_review_package(
     gemini_model: str = DEFAULT_GEMINI_MODEL,
     fmp_transport: FmpTransport | None = None,
     gemini_transport: GeminiTransport | None = None,
+    gemini_cache: GeminiCacheStore | None = None,
     use_analyst: bool = False,
 ) -> ReviewPackageResult:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +103,7 @@ def build_review_package(
             research_question=research_question,
             gemini_model=gemini_model,
             use_analyst=use_analyst,
+            gemini_cache=gemini_cache,
         )
         written_paths = dict(raw_live_scan_result.written_paths)
     stop_at = "raw-bundle"

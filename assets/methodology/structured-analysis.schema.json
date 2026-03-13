@@ -138,8 +138,8 @@
         "fcf_margin_pct": { "type": "number" },
         "multiple": { "type": "number" },
         "shares_m": { "type": "number", "minimum": 0 },
-        "trough_path": { "type": "object" },
-        "tbv_crosscheck": { "type": "object" }
+        "trough_path": { "type": ["string", "object"] },
+        "tbv_crosscheck": { "type": ["string", "object"] }
       }
     },
     "stretch_case_assumptions": {
@@ -267,14 +267,14 @@
         "thesis_summary": { "type": "string" },
         "catalysts": {
           "type": "array",
-          "items": {}
+          "items": { "type": "string" }
         },
         "key_risks": {
           "type": "array",
-          "items": {}
+          "items": { "type": "string" }
         },
-        "key_financials": { "type": "object" },
-        "structural_diagnosis": { "type": "object" },
+        "key_financials": { "type": ["string", "object"] },
+        "structural_diagnosis": { "type": ["string", "object"] },
         "human_judgment_flags": {
           "type": "array",
           "items": { "type": "string" }

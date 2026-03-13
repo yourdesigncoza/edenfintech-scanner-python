@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from .assets import contract_path, gemini_raw_bundle_schema_path, holdings_schema_path, load_json, scan_input_schema_path, structured_analysis_schema_path
-from .cache import FmpCacheStore, cached_transport
+from .cache import FmpCacheStore, GeminiCacheStore, cached_transport
 from .config import discover_project_root, load_config
 from .analyst import ClaudeAnalystClient, generate_llm_analysis_draft
 from .field_generation import build_structured_analysis_draft_file
@@ -232,6 +232,13 @@ def _default_fmp_cache_dir() -> Path:
     return root / "data" / "cache" / "fmp"
 
 
+def _default_gemini_cache_dir() -> Path:
+    root = discover_project_root()
+    if root is None:
+        root = Path.cwd()
+    return root / "data" / "cache" / "gemini"
+
+
 def _cmd_fetch_fmp_bundle(tickers: list[str], json_out: str | None, fresh: bool = False) -> int:
     config = load_config()
     from .fmp import _default_transport
@@ -245,24 +252,40 @@ def _cmd_fetch_fmp_bundle(tickers: list[str], json_out: str | None, fresh: bool 
 
 
 def _cmd_cache_status(cache_dir: Path | None = None) -> int:
-    store = FmpCacheStore(cache_dir or _default_fmp_cache_dir())
-    status = store.status()
-    if not status:
-        print("Cache is empty.")
-        return 0
-    for endpoint, info in sorted(status.items()):
-        print(f"{endpoint}: {info['count']} entries (TTL: {info['ttl_seconds']}s)")
-        for entry in info["entries"]:
+    # FMP cache
+    fmp_store = FmpCacheStore(cache_dir or _default_fmp_cache_dir())
+    fmp_status = fmp_store.status()
+    if fmp_status:
+        print("FMP cache:")
+        for endpoint, info in sorted(fmp_status.items()):
+            print(f"  {endpoint}: {info['count']} entries (TTL: {info['ttl_seconds']}s)")
+            for entry in info["entries"]:
+                expires = entry.get("expires_at")
+                label = f"  expires_at={expires:.0f}" if expires else "  no meta"
+                print(f"    {entry['ticker']}{label}")
+    else:
+        print("FMP cache: empty")
+
+    # Gemini cache
+    gemini_store = GeminiCacheStore(_default_gemini_cache_dir())
+    gemini_status = gemini_store.status()
+    if gemini_status["count"] > 0:
+        print(f"\nGemini cache: {gemini_status['count']} entries (TTL: {gemini_status['ttl_seconds']}s)")
+        for entry in gemini_status["entries"]:
             expires = entry.get("expires_at")
             label = f"  expires_at={expires:.0f}" if expires else "  no meta"
             print(f"  {entry['ticker']}{label}")
+    else:
+        print("\nGemini cache: empty")
     return 0
 
 
 def _cmd_cache_clear(cache_dir: Path | None = None) -> int:
-    store = FmpCacheStore(cache_dir or _default_fmp_cache_dir())
-    store.clear()
-    print("Cache cleared.")
+    fmp_store = FmpCacheStore(cache_dir or _default_fmp_cache_dir())
+    fmp_store.clear()
+    gemini_store = GeminiCacheStore(_default_gemini_cache_dir())
+    gemini_store.clear()
+    print("FMP and Gemini caches cleared.")
     return 0
 
 
@@ -312,6 +335,7 @@ def _cmd_run_live_scan(
     from .fmp import _default_transport
     store = FmpCacheStore(_default_fmp_cache_dir())
     fmp_transport = cached_transport(_default_transport, store, fresh=fresh)
+    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir())
     result = run_live_scan(
         tickers,
         out_dir=Path(out_dir),
@@ -322,6 +346,7 @@ def _cmd_run_live_scan(
         focus=focus,
         research_question=research_question,
         gemini_model=gemini_model or "gemini-3-pro-preview",
+        gemini_cache=gemini_cache,
     )
     print(
         json.dumps(
@@ -409,12 +434,14 @@ def _cmd_build_review_package(
     from .fmp import _default_transport
     store = FmpCacheStore(_default_fmp_cache_dir())
     fmp_transport = cached_transport(_default_transport, store, fresh=fresh)
+    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir())
     result = build_review_package(
         tickers,
         out_dir=Path(out_dir),
         structured_analysis_path=Path(structured_analysis_path) if structured_analysis_path else None,
         config=config,
         fmp_transport=fmp_transport,
+        gemini_cache=gemini_cache,
         focus=focus,
         research_question=research_question,
         gemini_model=gemini_model or "gemini-3-pro-preview",
@@ -500,15 +527,17 @@ def _cmd_review_holding(
 
 def _cmd_auto_scan(tickers: list[str], out_dir: str | None, fresh: bool = False) -> int:
     config = load_config()
-    config.require("fmp_api_key", "anthropic_api_key")
+    config.require("fmp_api_key")
     from .fmp import _default_transport
     store = FmpCacheStore(_default_fmp_cache_dir())
     transport = cached_transport(_default_transport, store, fresh=fresh)
+    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir())
     result = auto_scan(
         tickers,
         config=config,
         out_dir=Path(out_dir) if out_dir else None,
         fmp_transport=transport,
+        gemini_cache=gemini_cache,
     )
     summary = result.manifest_path.read_text() if result.manifest_path.exists() else "{}"
     manifest = json.loads(summary)
@@ -527,11 +556,12 @@ def _cmd_sector_scan(
     fresh: bool = False,
 ) -> int:
     config = load_config()
-    config.require("fmp_api_key", "anthropic_api_key", "gemini_api_key")
+    config.require("fmp_api_key", "gemini_api_key")
     from .fmp import _default_transport
     store = FmpCacheStore(_default_fmp_cache_dir())
     transport = cached_transport(_default_transport, store, fresh=fresh)
     fmp_client = FmpClient(config.fmp_api_key, transport=transport)
+    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir())
     result = sector_scan(
         sector_name,
         config=config,
@@ -540,6 +570,7 @@ def _cmd_sector_scan(
         excluded_industries=exclude_industry,
         fmp_transport=transport,
         fmp_client=fmp_client,
+        gemini_cache=gemini_cache,
     )
     summary = result.manifest_path.read_text() if result.manifest_path.exists() else "{}"
     manifest = json.loads(summary)
@@ -645,7 +676,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_live_scan.add_argument("--focus")
     run_live_scan.add_argument("--research-question")
     run_live_scan.add_argument("--gemini-model")
-    run_live_scan.add_argument("--fresh", action="store_true", help="Bypass FMP cache")
+    run_live_scan.add_argument("--fresh", action="store_true", help="Bypass FMP and Gemini caches")
 
     build_review_package_parser = subparsers.add_parser("build-review-package")
     build_review_package_parser.add_argument("tickers", nargs="+")
@@ -654,7 +685,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_review_package_parser.add_argument("--focus")
     build_review_package_parser.add_argument("--research-question")
     build_review_package_parser.add_argument("--gemini-model")
-    build_review_package_parser.add_argument("--fresh", action="store_true", help="Bypass FMP cache")
+    build_review_package_parser.add_argument("--fresh", action="store_true", help="Bypass FMP and Gemini caches")
     build_review_package_parser.add_argument("--use-analyst", action="store_true", default=False, help="Use Claude analyst agent instead of deterministic machine draft.")
 
     subparsers.add_parser("cache-status")

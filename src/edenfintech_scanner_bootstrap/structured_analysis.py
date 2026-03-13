@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .assets import load_json, structured_analysis_schema_path
-from .schemas import SchemaValidationError, validate_instance
+from .schemas import SchemaValidationError, validate_all_errors, validate_instance
 
 
 RAW_CHECK_ORDER = ["solvency", "dilution", "revenue_growth", "roic", "valuation"]
@@ -171,10 +171,9 @@ def _validate_provenance_coverage(
 
 
 def validate_structured_analysis(payload: dict) -> None:
-    try:
-        validate_instance(payload, _load_schema())
-    except SchemaValidationError as exc:
-        raise ValueError(f"structured analysis schema validation failed: {exc}") from exc
+    errors = validate_all_errors(payload, _load_schema())
+    if errors:
+        raise ValueError(f"structured analysis schema validation failed: {'; '.join(errors)}")
 
 
 def review_structured_analysis(payload: dict) -> dict:

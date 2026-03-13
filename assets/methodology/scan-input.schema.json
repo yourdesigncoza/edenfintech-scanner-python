@@ -150,10 +150,10 @@
                 "multiple": { "type": "number" },
                 "shares_m": { "type": "number", "minimum": 0 },
                 "trough_path": {
-                  "type": "object"
+                  "type": ["string", "object"]
                 },
                 "tbv_crosscheck": {
-                  "type": "object"
+                  "type": ["string", "object"]
                 }
               }
             },
@@ -245,17 +245,17 @@
             "thesis_summary": { "type": "string" },
             "catalysts": {
               "type": "array",
-              "items": {}
+              "items": { "type": "string" }
             },
             "key_risks": {
               "type": "array",
-              "items": {}
+              "items": { "type": "string" }
             },
             "key_financials": {
-              "type": "object"
+              "type": ["string", "object"]
             },
             "structural_diagnosis": {
-              "type": "object"
+              "type": ["string", "object"]
             },
             "human_judgment_flags": {
               "type": "array",

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .automation import AutoAnalyzeResult, auto_analyze
+from .cache import GeminiCacheStore
 from .config import AppConfig
 from .fmp import FmpClient, FmpTransport, build_raw_candidate_from_fmp
 from .hardening import (
@@ -146,11 +147,13 @@ def _process_single_ticker(
     )
 
     # Build scan-input payload
+    from .importers import build_scan_input
     from .structured_analysis import apply_structured_analysis
     try:
-        scan_payload = apply_structured_analysis(auto_result.raw_bundle, overlay)
+        enriched = apply_structured_analysis(auto_result.raw_bundle, overlay)
+        scan_payload = build_scan_input(enriched)
     except Exception as exc:
-        logger.warning("apply_structured_analysis failed for %s, building inline payload", ticker)
+        logger.warning("apply_structured_analysis failed for %s, building inline payload: %s", ticker, exc)
         # Build a minimal scan-input inline from overlay + raw bundle
         scan_payload = _build_inline_scan_payload(overlay_candidate, raw_candidate, auto_result.raw_bundle)
 
@@ -289,6 +292,7 @@ def auto_scan(
     config: AppConfig,
     out_dir: Path | None = None,
     fmp_transport: FmpTransport | None = None,
+    gemini_cache: GeminiCacheStore | None = None,
     judge_transport=None,
     analyst_transport=None,
     validator_transport=None,
@@ -316,6 +320,7 @@ def auto_scan(
                 config=config,
                 out_dir=out_dir / ticker / "raw",
                 fmp_transport=fmp_transport,
+                gemini_cache=gemini_cache,
                 analyst_client=analyst_client,
                 validator_client=validator_client,
                 epistemic_client=epistemic_client,
@@ -360,6 +365,7 @@ def sector_scan(
     excluded_industries: list[str] | None = None,
     fmp_client: FmpClient | None = None,
     fmp_transport: FmpTransport | None = None,
+    gemini_cache: GeminiCacheStore | None = None,
     judge_transport=None,
     analyst_transport=None,
     validator_transport=None,
@@ -435,6 +441,7 @@ def sector_scan(
                 config=config,
                 out_dir=out_dir / ticker / "raw",
                 fmp_transport=fmp_transport,
+                gemini_cache=gemini_cache,
                 analyst_client=analyst_client,
                 validator_client=validator_client,
                 epistemic_client=epistemic_client,

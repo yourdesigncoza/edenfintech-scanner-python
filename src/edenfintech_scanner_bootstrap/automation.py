@@ -7,12 +7,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from typing import Callable
+
 from .analyst import ClaudeAnalystClient, generate_llm_analysis_draft
+from .cache import GeminiCacheStore
 from .config import AppConfig
 from .fmp import FmpTransport
+from .llm_transport import LlmResponseError, default_anthropic_transport, default_openai_transport
 from .epistemic_reviewer import (
     EpistemicReviewerClient,
     EpistemicReviewInput,
@@ -20,7 +26,7 @@ from .epistemic_reviewer import (
     extract_epistemic_input,
 )
 from .live_scan import run_live_scan
-from .sector import load_sector_knowledge
+from .sector import ensure_sector_knowledge
 from .structured_analysis import finalize_structured_analysis
 from .validator import RedTeamValidatorClient, validate_overlay
 
@@ -30,6 +36,57 @@ _PCS_QUESTION_KEYS = [
     "q1_operational", "q2_regulatory", "q3_precedent",
     "q4_nonbinary", "q5_macro",
 ]
+
+
+def _save_llm_artifact(out_dir: Path, filename: str, data: dict) -> None:
+    """Write an LLM result artifact to the run output directory.
+
+    Uses atomic write (tmp + os.replace) so partial writes never corrupt.
+    Raises on any failure so we never silently lose data.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / filename
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(out_dir), prefix=f".{filename}.", suffix=".tmp",
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, str(target))
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+    if not target.exists() or target.stat().st_size == 0:
+        raise RuntimeError(f"Artifact not on disk after write: {target}")
+
+
+def _make_transport(config: AppConfig) -> Callable[[dict], dict]:
+    """Build LLM transport from config provider setting."""
+    if config.llm_provider == "openai":
+        config.require("openai_api_key")
+
+        def transport(payload: dict) -> dict:
+            model = config.llm_model  # always use configured OpenAI model, ignore Anthropic per-stage names
+            timeout = payload.pop("timeout", config.llm_timeout)
+            return default_openai_transport(
+                payload, api_key=config.openai_api_key, model=model,
+                timeout=timeout,
+            )
+        return transport
+    else:
+        config.require("anthropic_api_key")
+
+        def transport(payload: dict) -> dict:
+            model = payload.get("model", config.analyst_model)
+            # Strip keys not part of the Anthropic API
+            clean = {k: v for k, v in payload.items() if k not in ("model", "timeout")}
+            return default_anthropic_transport(
+                clean, api_key=config.anthropic_api_key, model=model,
+            )
+        return transport
 
 
 @dataclass(frozen=True)
@@ -54,6 +111,7 @@ def auto_analyze(
     validator_client: RedTeamValidatorClient | None = None,
     epistemic_client: EpistemicReviewerClient | None = None,
     sector_knowledge: dict | None = None,
+    gemini_cache: GeminiCacheStore | None = None,
     max_retries: int = 2,
 ) -> AutoAnalyzeResult:
     """Run the full automated analysis flow for a single ticker.
@@ -68,33 +126,58 @@ def auto_analyze(
     7. Finalize with LLM_CONFIRMED provenance
     """
     # Step 1: Fetch raw bundles
+    print(f"[{ticker}] Step 1/6: Fetching raw bundles ...")
     scan_result = run_live_scan(
         [ticker], out_dir=out_dir, stop_at="raw-bundle", config=config,
-        fmp_transport=fmp_transport,
+        fmp_transport=fmp_transport, gemini_cache=gemini_cache,
     )
 
     # Step 2: Load merged bundle
     merged_path = scan_result.written_paths["merged_raw"]
     merged_bundle = json.loads(merged_path.read_text())
 
-    # Step 3: Load sector knowledge if not provided
+    # Step 3: Load sector knowledge if not provided (auto-hydrate if missing/stale)
     if sector_knowledge is None:
         raw_candidate = merged_bundle["raw_candidates"][0]
         industry = raw_candidate.get("industry", "")
         if industry:
+            print(f"[{ticker}] Step 2/6: Sector knowledge for '{industry}' ...", end=" ", flush=True)
             try:
-                sector_knowledge = load_sector_knowledge(industry)
+                sector_knowledge = ensure_sector_knowledge(
+                    industry, config=config,
+                )
+                print("OK")
             except Exception:
+                print("FAILED (proceeding without)")
                 logger.warning(
-                    "Could not load sector knowledge for '%s'; proceeding without", industry,
+                    "Could not ensure sector knowledge for '%s'; proceeding without",
+                    industry,
                 )
 
-    # Step 4: Create analyst client if not injected
-    if analyst_client is None:
-        config.require("anthropic_api_key")
-        analyst_client = ClaudeAnalystClient(
-            config.anthropic_api_key, model=config.analyst_model,
-        )
+    # Step 4: Create agent clients if not injected
+    if analyst_client is None or validator_client is None or epistemic_client is None:
+        transport = _make_transport(config)
+        api_key = (config.openai_api_key if config.llm_provider == "openai"
+                   else config.anthropic_api_key)
+        if analyst_client is None:
+            analyst_client = ClaudeAnalystClient(
+                api_key,
+                model=config.analyst_model,
+                fundamentals_model=config.analyst_fundamentals_model,
+                qualitative_model=config.analyst_qualitative_model,
+                synthesis_model=config.analyst_synthesis_model,
+                transport=transport,
+                synthesis_timeout=config.llm_synthesis_timeout,
+                artifact_dir=out_dir,
+            )
+        if validator_client is None:
+            validator_client = RedTeamValidatorClient(
+                api_key, transport=transport,
+            )
+        if epistemic_client is None:
+            epistemic_client = EpistemicReviewerClient(
+                api_key, transport=transport,
+            )
 
     # Step 5: Retry loop
     objections: list[dict] | None = None
@@ -102,34 +185,104 @@ def auto_analyze(
     validation_result: dict = {}
 
     for attempt in range(max_retries + 1):
-        draft = generate_llm_analysis_draft(
-            merged_bundle,
-            client=analyst_client,
-            sector_knowledge=sector_knowledge,
-            validator_objections=objections,
-        )
+        attempt_label = f" (retry {attempt})" if attempt > 0 else ""
+        suffix = f"-retry{attempt}" if attempt > 0 else ""
+
+        print(f"[{ticker}] Step 3/6: Analyst draft (3-stage){attempt_label} ...", end=" ", flush=True)
+        try:
+            draft = generate_llm_analysis_draft(
+                merged_bundle,
+                client=analyst_client,
+                sector_knowledge=sector_knowledge,
+                validator_objections=objections,
+            )
+            print("OK")
+        except (ValueError, LlmResponseError) as exc:
+            # Synthesis-raw artifact already saved before _post_validate.
+            # Convert to objection and retry (synthesis only, stages 1+2 cached).
+            print(f"FAIL ({exc})")
+            if attempt < max_retries:
+                msg = str(exc)
+                if isinstance(exc, LlmResponseError):
+                    msg = (f"CRITICAL: Your previous response was NOT valid JSON. "
+                           f"Error: {exc}. Return ONLY valid JSON.")
+                elif "schema validation failed" in msg:
+                    msg = (
+                        f"SCHEMA VALIDATION FAILED: {exc}\n"
+                        "Fix the errors above using ONLY these valid enum values:\n"
+                        "- margin_trend_gate: PASS | PERMANENT_PASS\n"
+                        "- final_cluster_status: CLEAR_WINNER | CONDITIONAL_WINNER | LOWER_PRIORITY | ELIMINATED\n"
+                        "- catalyst_classification: VALID_CATALYST | SUPPORTING_TAILWIND | WATCH_ONLY | INVALID\n"
+                        "- dominant_risk_type: Operational/Financial | Cyclical/Macro | Regulatory/Political | Legal/Investigation | Structural fragility (SPOF)\n"
+                        "- setup_pattern: SOLVENCY_SCARE | QUALITY_FRANCHISE | NARRATIVE_DISCOUNT | NEW_OPERATOR | OTHER\n"
+                        "- catalyst_stack[].type: HARD | MEDIUM | SOFT\n"
+                        "- issues_and_fixes[].evidence_status: ANNOUNCED_ONLY | ACTION_UNDERWAY | EARLY_RESULTS_VISIBLE | PROVEN\n"
+                        "Do NOT invent compound values. Include ALL required keys."
+                    )
+                objections = [{"objection": msg}]
+                retries_used += 1
+                continue
+            raise
+
+        # Gate: verify analyst artifacts exist on disk before proceeding
+        for name in ["analyst-fundamentals.json", "analyst-qualitative.json", "analyst-synthesis-raw.json"]:
+            p = out_dir / name
+            if not p.exists() or p.stat().st_size == 0:
+                raise RuntimeError(f"[{ticker}] Required artifact missing: {p}")
+
+        # Save the full draft envelope
+        _save_llm_artifact(out_dir, f"analyst-synthesis{suffix}.json", draft)
 
         overlay_candidate = draft["structured_candidates"][0]
         raw_candidate = merged_bundle["raw_candidates"][0]
 
+        print(f"[{ticker}] Step 4/6: Validator review{attempt_label} ...", end=" ", flush=True)
         validation_result = validate_overlay(
             overlay_candidate, raw_candidate, client=validator_client,
         )
+        verdict = validation_result["verdict"]
+        print(verdict)
 
-        if validation_result["verdict"] == "APPROVE":
+        # Save validator result
+        _save_llm_artifact(out_dir, f"validator-result{suffix}.json", validation_result)
+
+        if verdict in ("APPROVE", "APPROVE_WITH_CONCERNS"):
+            if verdict == "APPROVE_WITH_CONCERNS":
+                concerns = validation_result.get("objections", [])
+                overlay_candidate["validator_dissent"] = concerns
+                print(f"[{ticker}] Validator concerns ({len(concerns)}):")
+                for i, c in enumerate(concerns, 1):
+                    print(f"  {i}. {c}")
             break
 
-        # REJECT: collect objections for next attempt
+        # REJECT: collect objections and print them for operator visibility
         objections = validation_result.get("objections", [])
         # Convert string objections to dict format if needed
         if objections and isinstance(objections[0], str):
             objections = [{"objection": obj} for obj in objections]
+        if objections:
+            print(f"[{ticker}] Rejection reasons:")
+            for i, obj in enumerate(objections, 1):
+                reason = obj.get("objection", obj) if isinstance(obj, dict) else obj
+                print(f"  {i}. {reason}")
         if attempt < max_retries:
             retries_used += 1
+    else:
+        # All retries exhausted with REJECT — fatal errors persist, human must review
+        final_objections = validation_result.get("objections", [])
+        raise RuntimeError(
+            f"[{ticker}] Validator rejected all {max_retries + 1} attempts with fatal errors. "
+            f"Final objections: {final_objections}"
+        )
 
     # Step 6: Epistemic review (always runs)
+    print(f"[{ticker}] Step 5/6: Epistemic review ...", end=" ", flush=True)
     review_input = extract_epistemic_input(overlay_candidate)
     epistemic_result = epistemic_review(review_input, client=epistemic_client)
+    print("OK")
+
+    # Save epistemic review result
+    _save_llm_artifact(out_dir, "epistemic-review-result.json", epistemic_result)
 
     # Step 7: Merge epistemic PCS answers into overlay candidate
     for key in _PCS_QUESTION_KEYS:
@@ -142,12 +295,18 @@ def auto_analyze(
             }
 
     # Step 8: Finalize
+    print(f"[{ticker}] Step 6/6: Finalizing ...", end=" ", flush=True)
     finalized = finalize_structured_analysis(
         draft,
         reviewer=f"llm:{config.analyst_model}",
         final_status="LLM_CONFIRMED",
         note="Automated finalization via auto_analyze orchestrator",
     )
+
+    print("OK")
+
+    # Save finalized overlay
+    _save_llm_artifact(out_dir, "finalized-overlay.json", finalized)
 
     return AutoAnalyzeResult(
         ticker=ticker,

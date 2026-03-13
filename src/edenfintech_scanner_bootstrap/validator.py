@@ -1,12 +1,15 @@
 """Red-team validator agent with deterministic contradiction detection and LLM-powered adversarial questioning.
 
-Produces APPROVE/REJECT verdicts with specific objections. Contradictions are detected
-deterministically first, then fed into LLM context for adversarial red-team questioning.
+Produces APPROVE/APPROVE_WITH_CONCERNS/REJECT verdicts with specific objections.
+Contradictions are detected deterministically first, then fed into LLM context for
+adversarial red-team questioning.
 """
 from __future__ import annotations
 
 import json
 from typing import Callable
+
+from .llm_transport import default_anthropic_transport, parse_llm_json
 
 
 def _safe_get(data: dict, *keys, default=None):
@@ -152,7 +155,7 @@ VALIDATOR_OUTPUT_SCHEMA: dict = {
     "required": ["verdict", "questions", "objections"],
     "additionalProperties": False,
     "properties": {
-        "verdict": {"type": "string", "enum": ["APPROVE", "REJECT"]},
+        "verdict": {"type": "string", "enum": ["APPROVE", "APPROVE_WITH_CONCERNS", "REJECT"]},
         "questions": {
             "type": "array",
             "items": {
@@ -186,7 +189,7 @@ class RedTeamValidatorClient:
         self,
         api_key: str,
         *,
-        model: str = "claude-sonnet-4-5-20250514",
+        model: str = "claude-haiku-4-5-20251001",
         transport: ValidatorTransport | None = None,
     ) -> None:
         self.api_key = api_key
@@ -194,18 +197,13 @@ class RedTeamValidatorClient:
         self.transport = transport or self._default_transport
 
     def _default_transport(self, request_payload: dict) -> dict:
-        """Default transport using the Anthropic SDK with constrained decoding."""
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=self.api_key)
-        response = client.messages.create(
+        """Default transport using the Anthropic SDK."""
+        return default_anthropic_transport(
+            request_payload,
+            api_key=self.api_key,
             model=self.model,
             max_tokens=4096,
-            system=request_payload["system"],
-            messages=request_payload["messages"],
         )
-        text = response.content[0].text
-        return {"text": text, "stop_reason": response.stop_reason}
 
     def _build_system_prompt(self) -> str:
         """Build adversarial system prompt with red-team question templates."""
@@ -223,8 +221,17 @@ class RedTeamValidatorClient:
             "- challenge: your adversarial challenge to the analyst's position\n"
             "- evidence: specific evidence supporting your challenge\n"
             "- severity: HIGH, MEDIUM, or LOW\n\n"
-            "If you find material issues, set verdict to REJECT and list specific objections.\n"
-            "If the overlay is defensible, set verdict to APPROVE with empty objections.\n\n"
+            "VERDICT RUBRIC (follow strictly):\n"
+            "- REJECT: ONLY for fatal errors — mathematical impossibilities, internal\n"
+            "  contradictions (e.g. bull and bear cases use same assumptions), missing\n"
+            "  critical data that makes the analysis indefensible, or factual errors\n"
+            "  contradicted by the raw evidence.\n"
+            "- APPROVE_WITH_CONCERNS: The analysis is logically defensible but you have\n"
+            "  subjective disagreements — conservative vs aggressive assumptions, timing\n"
+            "  estimates, risk weighting, editorial improvements. List concerns as objections.\n"
+            "- APPROVE: No material issues found. Analysis is well-supported.\n\n"
+            "Most real-world equity analyses will warrant APPROVE_WITH_CONCERNS. Use REJECT\n"
+            "sparingly — only when the analysis cannot be defended.\n\n"
             "Return ONLY valid JSON matching the output schema. No markdown, no commentary."
         )
 
@@ -297,8 +304,7 @@ class RedTeamValidatorClient:
         }
 
         response = self.transport(request_payload)
-        raw_text = response["text"]
-        result = json.loads(raw_text)
+        result = parse_llm_json(response, agent="validator")
 
         # Enrich result with contradictions
         result["contradictions"] = contradictions

@@ -12,7 +12,15 @@ class AppConfig:
     openai_api_key: str | None
     codex_judge_model: str
     anthropic_api_key: str | None = None
-    analyst_model: str = "claude-sonnet-4-5-20250514"
+    analyst_model: str = "claude-haiku-4-5-20251001"
+    analyst_fundamentals_model: str = "claude-haiku-4-5-20251001"
+    analyst_qualitative_model: str = "claude-haiku-4-5-20251001"
+    analyst_synthesis_model: str = "claude-sonnet-4-20250514"
+    sector_staleness_days: int = 7
+    llm_provider: str = "anthropic"
+    llm_model: str = "gpt-5-mini"
+    llm_timeout: int = 180
+    llm_synthesis_timeout: int = 300
 
     def require(self, *fields: str) -> None:
         missing = [field for field in fields if not getattr(self, field)]
@@ -95,5 +103,13 @@ def load_config(dotenv_path: Path | None = None) -> AppConfig:
         openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
         codex_judge_model=os.environ.get("CODEX_JUDGE_MODEL", "gpt-5-codex"),
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
-        analyst_model=os.environ.get("ANALYST_MODEL", "claude-sonnet-4-5-20250514"),
+        analyst_model=os.environ.get("ANALYST_MODEL", "claude-haiku-4-5-20251001"),
+        analyst_fundamentals_model=os.environ.get("ANALYST_FUNDAMENTALS_MODEL", "claude-haiku-4-5-20251001"),
+        analyst_qualitative_model=os.environ.get("ANALYST_QUALITATIVE_MODEL", "claude-haiku-4-5-20251001"),
+        analyst_synthesis_model=os.environ.get("ANALYST_SYNTHESIS_MODEL", "claude-sonnet-4-20250514"),
+        sector_staleness_days=int(os.environ.get("SECTOR_STALENESS_DAYS", "7")),
+        llm_provider=os.environ.get("LLM_PROVIDER", "anthropic"),
+        llm_model=os.environ.get("LLM_MODEL", "gpt-5-mini"),
+        llm_timeout=int(os.environ.get("LLM_TIMEOUT", "180")),
+        llm_synthesis_timeout=int(os.environ.get("LLM_SYNTHESIS_TIMEOUT", "300")),
     )

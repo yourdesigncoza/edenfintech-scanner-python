@@ -1,9 +1,0 @@
-{
-  "text": "{\"research_notes\":[{\"claim\":\"Channel checks suggest implementation cycles are shortening.\",\"source_title\":\"Channel partner commentary\",\"source_url\":\"https://example.com/channel\",\"source_type\":\"third_party_research\",\"published_at\":\"2026-02-28\",\"confidence_note\":\"Second-hand evidence; useful but lower confidence.\"}],\"catalyst_evidence\":[],\"risk_evidence\":[],\"management_observations\":[],\"moat_observations\":[],\"precedent_observations\":[],\"epistemic_anchors\":[]}",
-  "modelVersion": "gemini-3-pro-preview",
-  "usageMetadata": {
-    "promptTokenCount": 401,
-    "candidatesTokenCount": 105,
-    "totalTokenCount": 506
-  }
-}

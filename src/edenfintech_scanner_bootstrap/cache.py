@@ -135,6 +135,84 @@ class FmpCacheStore:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
 
+GEMINI_DEFAULT_TTL = 14_400  # 4 hours
+
+
+class GeminiCacheStore:
+    """Disk-backed cache for Gemini qualitative research, keyed by ticker."""
+
+    def __init__(self, cache_dir: Path, ttl: int = GEMINI_DEFAULT_TTL) -> None:
+        self.cache_dir = cache_dir
+        self.ttl = ttl
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _data_path(self, ticker: str) -> Path:
+        return self.cache_dir / f"{ticker}.json"
+
+    def _meta_path(self, ticker: str) -> Path:
+        return self.cache_dir / f"{ticker}.meta.json"
+
+    def get(self, ticker: str) -> dict | None:
+        """Return cached candidate data if present and not expired, else None."""
+        meta_path = self._meta_path(ticker)
+        data_path = self._data_path(ticker)
+
+        if not meta_path.exists() or not data_path.exists():
+            return None
+
+        meta = json.loads(meta_path.read_text())
+        age = time.time() - meta["timestamp"]
+        if age > self.ttl:
+            return None
+
+        return json.loads(data_path.read_text())
+
+    def put(self, ticker: str, data: dict) -> None:
+        """Write candidate data and meta sidecar. Meta written first."""
+        if not data:
+            return
+
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        meta = {
+            "ticker": ticker,
+            "timestamp": time.time(),
+        }
+
+        # Write ordering: meta first, then data (crash safety)
+        self._meta_path(ticker).write_text(json.dumps(meta, indent=2))
+        self._data_path(ticker).write_text(json.dumps(data, indent=2))
+
+    def status(self) -> dict:
+        """Report cache entries and expiry info."""
+        if not self.cache_dir.exists():
+            return {"count": 0, "ttl_seconds": self.ttl, "entries": []}
+
+        data_files = [f for f in sorted(self.cache_dir.glob("*.json"))
+                      if not f.name.endswith(".meta.json")]
+        entries: list[dict] = []
+        for data_file in data_files:
+            ticker = data_file.stem
+            meta_path = self._meta_path(ticker)
+            expires_at = None
+            if meta_path.exists():
+                meta = json.loads(meta_path.read_text())
+                expires_at = meta["timestamp"] + self.ttl
+            entries.append({"ticker": ticker, "expires_at": expires_at})
+
+        return {
+            "count": len(data_files),
+            "ttl_seconds": self.ttl,
+            "entries": entries,
+        }
+
+    def clear(self) -> None:
+        """Remove all cached files and recreate empty cache_dir."""
+        if self.cache_dir.exists():
+            shutil.rmtree(self.cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+
 def cached_transport(
     inner_transport: FmpTransport,
     cache_store: FmpCacheStore,

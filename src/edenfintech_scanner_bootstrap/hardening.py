@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+
+from .llm_transport import parse_llm_json
 from typing import Callable
 
 from edenfintech_scanner_bootstrap.epistemic_reviewer import (
@@ -217,7 +219,7 @@ def cagr_exception_panel(
         }
 
         response = transport(payload)
-        parsed = json.loads(response["text"])
+        parsed = parse_llm_json(response, agent=f"cagr_exception_{agent_name}")
 
         votes.append(ExceptionVote(
             agent=agent_name,

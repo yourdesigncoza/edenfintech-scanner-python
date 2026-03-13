@@ -18,6 +18,7 @@ from .gemini import GeminiClient, _extract_response_text
 from .schemas import validate_instance
 
 STALENESS_DAYS = 180
+AUTO_STALENESS_DAYS = 7
 SECTOR_DATA_DIR = "data/sectors"
 REGISTRY_FILENAME = "registry.json"
 
@@ -217,10 +218,7 @@ def hydrate_sector(
         Project root for data storage. Auto-discovered if *None*.
     """
     if not sub_sectors:
-        raise ValueError(
-            "sub_sectors is required. Automatic discovery via FMP screener "
-            "is planned for Phase 6."
-        )
+        sub_sectors = [sector_name]
 
     app_config = config or load_config()
     if client is None:
@@ -290,9 +288,16 @@ def load_sector_knowledge(
 def check_sector_freshness(
     sector_name: str,
     *,
+    staleness_days: int = STALENESS_DAYS,
     project_root: Path | None = None,
 ) -> dict:
-    """Check if sector knowledge is stale (older than 180 days).
+    """Check if sector knowledge is stale.
+
+    Parameters
+    ----------
+    staleness_days:
+        Number of days after which knowledge is considered stale.
+        Defaults to STALENESS_DAYS (180).
 
     Returns
     -------
@@ -309,7 +314,7 @@ def check_sector_freshness(
 
     hydrated_at = datetime.fromisoformat(entry["hydrated_at"])
     age_days = (datetime.now() - hydrated_at).days
-    is_stale = age_days > STALENESS_DAYS
+    is_stale = age_days > staleness_days
 
     return {
         "sector": sector_name,
@@ -318,3 +323,34 @@ def check_sector_freshness(
         "hydrated_at": entry["hydrated_at"],
         "age_days": age_days,
     }
+
+
+def ensure_sector_knowledge(
+    sector_name: str,
+    *,
+    staleness_days: int = AUTO_STALENESS_DAYS,
+    client: GeminiClient | None = None,
+    config: AppConfig | None = None,
+    project_root: Path | None = None,
+) -> dict:
+    """Load sector knowledge, auto-hydrating if missing or stale.
+
+    Uses the sector_name as its own sub-sector for single-industry hydration.
+    """
+    freshness = check_sector_freshness(
+        sector_name, staleness_days=staleness_days, project_root=project_root,
+    )
+
+    if freshness["status"] == "FRESH":
+        return load_sector_knowledge(sector_name, project_root=project_root)
+
+    # Missing or stale — hydrate with sector_name as the single sub-sector
+    num_queries = len(KNOWLEDGE_CATEGORIES)
+    print(f"hydrating ({num_queries} queries) ...", end=" ", flush=True)
+    return hydrate_sector(
+        sector_name,
+        sub_sectors=[sector_name],
+        client=client,
+        config=config,
+        project_root=project_root,
+    )
