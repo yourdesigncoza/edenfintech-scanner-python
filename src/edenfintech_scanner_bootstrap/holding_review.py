@@ -253,3 +253,34 @@ def review_holding(
         )
 
     return result
+
+
+# -- Thesis invalidation → Step 8 monitoring checklist ----------------------
+
+_MONITORING_ACTIONS = {
+    "no_current_evidence": "QUARTERLY_REVIEW",
+    "weak_evidence": "MONTHLY_REVIEW",
+    "strong_evidence": "IMMEDIATE_REVIEW",
+}
+
+
+def thesis_integrity_checklist(thesis_invalidation: dict | None) -> list[dict]:
+    """Convert thesis invalidation conditions into Step 8 monitoring items.
+
+    Each item includes the early_warning_metric as the KPI to track
+    and a monitoring_action based on evidence severity at entry.
+    """
+    if thesis_invalidation is None:
+        return []
+    return [
+        {
+            "category": c["category"],
+            "risk_description": c["risk_description"],
+            "early_warning_metric": c["early_warning_metric"],
+            "evidence_status_at_entry": c["evidence_status"],
+            "monitoring_action": _MONITORING_ACTIONS.get(
+                c["evidence_status"], "QUARTERLY_REVIEW"
+            ),
+        }
+        for c in thesis_invalidation.get("conditions", [])
+    ]

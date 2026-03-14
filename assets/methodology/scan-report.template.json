@@ -17,11 +17,11 @@
     {
       "_comment": "epistemic_confidence template — include for candidates that reach epistemic review",
       "epistemic_confidence": {
-        "q1_operational": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
-        "q2_regulatory": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
-        "q3_precedent": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
-        "q4_nonbinary": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
-        "q5_macro": { "answer": "Yes|No", "justification": "...", "evidence": "..." },
+        "q1_operational_feasibility": { "answer": "STRONG|MODERATE|WEAK", "justification": "...", "evidence": "..." },
+        "q2_risk_bounded": { "answer": "STRONG|MODERATE|WEAK", "justification": "...", "evidence": "..." },
+        "q3_precedent_grounded": { "answer": "STRONG|MODERATE|WEAK", "justification": "...", "evidence": "..." },
+        "q4_downside_steelmanned": { "answer": "STRONG|MODERATE|WEAK", "justification": "...", "evidence": "..." },
+        "q5_catalyst_concrete": { "answer": "STRONG|MODERATE|WEAK", "justification": "...", "evidence": "..." },
         "no_count": 0,
         "raw_confidence": 5,
         "risk_type": "Operational/Financial|Cyclical/Macro|Regulatory/Political|Legal/Investigation|Structural fragility (SPOF)",

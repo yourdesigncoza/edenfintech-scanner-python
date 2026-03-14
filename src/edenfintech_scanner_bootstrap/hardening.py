@@ -1,6 +1,6 @@
 """Hardening gates for LLM bias detection in scan pipeline.
 
-Provides three gates to catch common LLM optimism patterns before
+Provides four gates to catch common LLM optimism patterns before
 overlays reach the deterministic pipeline:
 
 1. detect_probability_anchoring -- flags suspiciously round 60% base
@@ -8,10 +8,13 @@ overlays reach the deterministic pipeline:
 2. score_evidence_quality -- counts concrete vs vague citations in
    overlay provenance using epistemic_reviewer markers
 3. cagr_exception_panel -- 3-agent unanimous vote for CAGR exceptions
+4. detect_thesis_break -- flags thesis invalidation conditions with
+   strong or weak evidence, and catches anti-anchoring violations
 """
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from .llm_transport import parse_llm_json
@@ -79,7 +82,7 @@ def score_evidence_quality(
 
     Returns dict with counts, ratio, and optional methodology warning.
     """
-    provenance = overlay_candidate.get("provenance", [])
+    provenance = overlay_candidate.get("field_provenance", [])
 
     total_citations = 0
     concrete_count = 0
@@ -113,6 +116,120 @@ def score_evidence_quality(
         "concrete_ratio": concrete_ratio,
         "methodology_warning": methodology_warning,
     }
+
+
+# ---------------------------------------------------------------------------
+# Thesis invalidation — structural break detection + anti-anchoring
+# ---------------------------------------------------------------------------
+
+VALID_EVIDENCE_STATUSES = frozenset({
+    "no_current_evidence", "weak_evidence", "strong_evidence",
+})
+
+VALID_TI_CATEGORIES = frozenset({
+    "single_point_failure", "capital_structure", "regulatory",
+    "tech_disruption", "market_structure",
+})
+
+# Expanded anti-anchoring regex: catches "15%", "15 percent", "0.15",
+# "fifteen percent", "1 in 5", etc.
+_THESIS_ANCHORING_PATTERN = re.compile(
+    r'\b(?:100|\d{1,2}(?:\.\d+)?)\s*(?:%|percent|pct)'
+    r'|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|'
+    r'eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|'
+    r'nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)'
+    r'\s+percent\b'
+    r'|\b0\.\d+\b'
+    r'|\b\d+\s+(?:in|out\s+of)\s+\d+\b',
+    flags=re.IGNORECASE,
+)
+
+
+def detect_thesis_break(thesis_invalidation: dict | None) -> dict | None:
+    """Check thesis_invalidation conditions for imminent break signals.
+
+    Returns flag dict if:
+    - Anti-anchoring violation (percentages smuggled into text)
+    - Any condition has strong_evidence (THESIS_BREAK_IMMINENT)
+    - Any condition has weak_evidence (THESIS_BREAK_WATCH)
+
+    Returns None if thesis_invalidation is absent or all conditions clean.
+    """
+    if thesis_invalidation is None:
+        return None
+
+    conditions = thesis_invalidation.get("conditions", [])
+    imminent = thesis_invalidation.get("imminent_break_flag", False)
+
+    # Anti-anchoring: reject if any condition text contains probability numbers
+    for condition in conditions:
+        for text_field in ("risk_description", "early_warning_metric"):
+            text = condition.get(text_field, "")
+            if _THESIS_ANCHORING_PATTERN.search(text):
+                return {
+                    "flag": "THESIS_BREAK_PROBABILITY_ANCHORING",
+                    "reason": (
+                        f"Thesis invalidation condition contains probability "
+                        f"anchor in {text_field}: '{text}'. "
+                        f"evidence_status must be categorical only."
+                    ),
+                }
+
+    # Validate evidence_status values
+    strong_conditions: list[dict] = []
+    weak_conditions: list[dict] = []
+    for condition in conditions:
+        status = condition.get("evidence_status", "")
+        if status not in VALID_EVIDENCE_STATUSES:
+            return {
+                "flag": "THESIS_BREAK_INVALID_STATUS",
+                "reason": (
+                    f"Invalid evidence_status '{status}' in thesis "
+                    f"invalidation condition."
+                ),
+            }
+        if status == "strong_evidence":
+            strong_conditions.append(condition)
+        elif status == "weak_evidence":
+            weak_conditions.append(condition)
+
+    if imminent or strong_conditions:
+        return {
+            "flag": "THESIS_BREAK_IMMINENT",
+            "imminent_break_flag": True,
+            "strong_evidence_conditions": [
+                {
+                    "category": c["category"],
+                    "risk_description": c["risk_description"],
+                }
+                for c in strong_conditions
+            ],
+            "reason": (
+                f"Thesis invalidation detected {len(strong_conditions)} "
+                f"condition(s) with strong_evidence. Base-case probability "
+                f"must be forced below 60%."
+            ),
+        }
+
+    if weak_conditions:
+        return {
+            "flag": "THESIS_BREAK_WATCH",
+            "imminent_break_flag": False,
+            "weak_evidence_conditions": [
+                {
+                    "category": c["category"],
+                    "risk_description": c["risk_description"],
+                }
+                for c in weak_conditions
+            ],
+            "reason": (
+                f"{len(weak_conditions)} thesis invalidation condition(s) "
+                f"have weak_evidence. Probability bucket penalized. "
+                f"Monitor early_warning_metrics."
+            ),
+        }
+
+    return None
 
 
 # ---------------------------------------------------------------------------

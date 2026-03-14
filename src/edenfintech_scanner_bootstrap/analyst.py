@@ -54,6 +54,22 @@ _QUALITATIVE_ANALYSIS_FIELDS = (
 _API_RETRY_PAUSE_SECS = 5 * 60  # 5 minutes
 
 
+def _in_scope_provenance(field_path: str, stage_fields: tuple[str, ...], section_prefixes: tuple[str, ...]) -> bool:
+    """Return True if field_path belongs to this stage's scope."""
+    for prefix in section_prefixes:
+        if field_path.startswith(prefix):
+            return True
+    for field in stage_fields:
+        if field_path.startswith(f"analysis_inputs.{field}"):
+            return True
+    return False
+
+
+# Allowed provenance prefixes per stage (beyond analysis_inputs.{stage_fields}.*)
+_FUNDAMENTALS_PREFIXES = ("screening_inputs.",)
+_QUALITATIVE_PREFIXES = ("epistemic_inputs.",)
+
+
 def _backfill_from_stages(
     synthesis_output: dict,
     fundamentals_output: dict,
@@ -63,6 +79,8 @@ def _backfill_from_stages(
 
     On retry, the LLM may focus on objections and omit unchanged fields.
     This merges them back from the constrained-decoding stage outputs.
+    Provenance entries are filtered to each stage's scope to prevent
+    cross-stage duplicates (e.g., Qualitative emitting Fundamentals paths).
     """
     filled: list[str] = []
 
@@ -107,14 +125,28 @@ def _backfill_from_stages(
             synth_ei[key] = qual_ei[key]
             filled.append(f"epistemic_inputs.{key}")
 
-    # field_provenance backfill
+    # field_provenance backfill — scope-filtered to prevent cross-stage duplicates
     synth_prov = synthesis_output.get("field_provenance", [])
     synth_paths = {p.get("field_path") for p in synth_prov if isinstance(p, dict)}
-    for stage_output in [fundamentals_output, qualitative_output]:
+    stage_scopes = [
+        (fundamentals_output, _FUNDAMENTALS_ANALYSIS_FIELDS, _FUNDAMENTALS_PREFIXES),
+        (qualitative_output, _QUALITATIVE_ANALYSIS_FIELDS, _QUALITATIVE_PREFIXES),
+    ]
+    dropped: list[str] = []
+    for stage_output, stage_fields, section_prefixes in stage_scopes:
         for entry in stage_output.get("field_provenance", []):
-            if isinstance(entry, dict) and entry.get("field_path") not in synth_paths:
+            if not isinstance(entry, dict):
+                continue
+            fp = entry.get("field_path", "")
+            if not _in_scope_provenance(fp, stage_fields, section_prefixes):
+                dropped.append(fp)
+                continue
+            if fp not in synth_paths:
                 synth_prov.append(entry)
-                filled.append(f"provenance:{entry.get('field_path')}")
+                synth_paths.add(fp)
+                filled.append(f"provenance:{fp}")
+    if dropped:
+        print(f"  [provenance scope] dropped {len(dropped)} out-of-scope entries: {', '.join(dropped)}")
 
     if filled:
         print(f"  [backfill] {len(filled)} fields from stages 1+2: {', '.join(filled)}")
@@ -276,6 +308,29 @@ def _build_fundamentals_schema() -> dict:
     full_required = definitions.get("analysis_inputs", {}).get("required", [])
     stage_required = [k for k in full_required if k in _FUNDAMENTALS_ANALYSIS_FIELDS]
 
+    # Force string type for fields that constrained decoding would collapse
+    # from ["string", "object"] → "object", allowing empty {} output.
+    if "key_financials" in stage_analysis_props:
+        stage_analysis_props["key_financials"] = {"type": "string"}
+
+    stage_definitions = {
+        k: deepcopy(definitions[k])
+        for k in (
+            "screening_check",
+            "base_case_assumptions",
+            "worst_case_assumptions",
+            "stretch_case_assumptions",
+            "probability_inputs",
+        )
+        if k in definitions
+    }
+    # Force trough_path and tbv_crosscheck to string in worst_case definition
+    wc_props = stage_definitions.get("worst_case_assumptions", {}).get("properties", {})
+    if "trough_path" in wc_props:
+        wc_props["trough_path"] = {"type": "string"}
+    if "tbv_crosscheck" in wc_props:
+        wc_props["tbv_crosscheck"] = {"type": "string"}
+
     output_schema = {
         "type": "object",
         "required": ["screening_inputs", "analysis_inputs", "field_provenance"],
@@ -288,17 +343,7 @@ def _build_fundamentals_schema() -> dict:
             },
             "field_provenance": _build_provenance_array(definitions),
         },
-        "definitions": {
-            k: deepcopy(definitions[k])
-            for k in (
-                "screening_check",
-                "base_case_assumptions",
-                "worst_case_assumptions",
-                "stretch_case_assumptions",
-                "probability_inputs",
-            )
-            if k in definitions
-        },
+        "definitions": stage_definitions,
     }
 
     return _strip_unsupported_constraints(output_schema)
@@ -391,7 +436,19 @@ PROVENANCE RULES:
 def _format_sector_block(sector_knowledge: dict | None) -> str:
     if not sector_knowledge:
         return ""
-    return f"\n\nSECTOR CONTEXT:\n{json.dumps(sector_knowledge, indent=2)}"
+    return (
+        f"\n\nSECTOR CONTEXT:\n{json.dumps(sector_knowledge, indent=2)}"
+        "\n\nSECTOR ALIGNMENT CHECK (MANDATORY):\n"
+        "Before applying the SECTOR CONTEXT above, compare it against the company's "
+        "actual business description in the raw candidate data (fmp_context.profile.description). "
+        "If the company has pivoted, divested, or restructured such that the SECTOR CONTEXT "
+        "describes a fundamentally different industry than the company's current operations, "
+        "you MUST:\n"
+        "1. Note the mismatch in field_provenance for screening_inputs.industry_in_secular_decline\n"
+        "2. Evaluate industry_in_secular_decline based on the company's CURRENT business, "
+        "not the stale sector tag\n"
+        "3. Disregard kill_factors that apply to the old business model"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +462,16 @@ def _build_fundamentals_system_prompt(sector_knowledge: dict | None = None) -> s
         + "\n\nSCOPE: Produce screening_inputs, quantitative analysis_inputs "
         "(margin_trend_gate, setup_pattern, base/worst/stretch case assumptions, "
         "probability_inputs, key_financials), and field_provenance for these fields ONLY.\n"
-        "Do NOT produce qualitative fields (catalysts, risks, thesis, epistemic inputs)."
+        "Do NOT produce qualitative fields (catalysts, risks, thesis, epistemic inputs).\n\n"
+        "MANDATORY FIELD REQUIREMENTS:\n"
+        "- key_financials: MUST be a populated string or object summarizing revenue, FCF, margins, "
+        "ROIC, and debt from FMP data. Never return {} or empty.\n"
+        "- worst_case_assumptions.trough_path: MUST be a string describing the trough revenue/margin "
+        "scenario (e.g. 'Revenue declines 15% to $X.XB due to ...'). Never return {}.\n"
+        "- worst_case_assumptions.tbv_crosscheck: MUST be a string estimating tangible book value "
+        "floor or noting it is not applicable with reasoning. Never return {}.\n"
+        "- All three case assumptions (worst/base/stretch) must have populated numeric estimates, "
+        "not empty objects."
         + _format_sector_block(sector_knowledge)
     )
 
@@ -453,13 +519,35 @@ def _build_qualitative_system_prompt(sector_knowledge: dict | None = None) -> st
     )
 
 
+def _format_peer_context_block(peer_context: list[dict] | None) -> str:
+    """Format peer metrics into a comparison table for analyst prompts."""
+    if not peer_context:
+        return ""
+    lines = [
+        "",
+        "PEER COMPARISON DATA (for decision_memo — use these real numbers, do not hallucinate):",
+        "Ticker | Revenue | FCF Margin | ROIC | Debt/Eq | Off ATH | Dilution 3yr",
+    ]
+    for p in peer_context:
+        rev = f"${p['latest_revenue_b']:.1f}B" if p.get("latest_revenue_b") is not None else "N/A"
+        fcf = f"{p['latest_fcf_margin_pct']:.1f}%" if p.get("latest_fcf_margin_pct") is not None else "N/A"
+        roic = f"{p['roic_pct']:.1f}%" if p.get("roic_pct") is not None else "N/A"
+        de = f"{p['debt_to_equity']:.2f}" if p.get("debt_to_equity") is not None else "N/A"
+        ath = f"{p['pct_off_ath']:.1f}%" if p.get("pct_off_ath") is not None else "N/A"
+        dil = f"{p['shares_growth_3yr_pct']:.1f}%" if p.get("shares_growth_3yr_pct") is not None else "N/A"
+        lines.append(f"{p['ticker']:6s} | {rev:>8s} | {fcf:>10s} | {roic:>5s} | {de:>7s} | {ath:>7s} | {dil}")
+    return "\n".join(lines)
+
+
 def _build_qualitative_user_prompt(
     raw_candidate: dict,
     evidence_context: dict,
     evidence_snippets: set[str],
     fundamentals_output: dict,
+    *,
+    peer_context: list[dict] | None = None,
 ) -> str:
-    return "\n".join([
+    parts = [
         "Analyze the following raw candidate and produce the qualitative analysis overlay.",
         "",
         f"Ticker: {raw_candidate.get('ticker', 'UNKNOWN')}",
@@ -468,6 +556,11 @@ def _build_qualitative_user_prompt(
         "",
         "STAGE 1 FUNDAMENTALS (for reference — do not reproduce these fields):",
         json.dumps(fundamentals_output, indent=2),
+    ]
+    peer_block = _format_peer_context_block(peer_context)
+    if peer_block:
+        parts.append(peer_block)
+    parts.extend([
         "",
         "EVIDENCE CONTEXT:",
         json.dumps(evidence_context, indent=2),
@@ -478,6 +571,7 @@ def _build_qualitative_user_prompt(
         "RAW CANDIDATE DATA:",
         json.dumps(raw_candidate, indent=2),
     ])
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -536,6 +630,7 @@ def _build_synthesis_user_prompt(
     qualitative_output: dict,
     *,
     validator_objections: list[dict] | None = None,
+    peer_context: list[dict] | None = None,
 ) -> str:
     parts = [
         "Reconcile the following stage outputs into a unified structured analysis overlay.",
@@ -547,10 +642,22 @@ def _build_synthesis_user_prompt(
         "",
         "STAGE 2 QUALITATIVE:",
         json.dumps(qualitative_output, indent=2),
+    ]
+    peer_block = _format_peer_context_block(peer_context)
+    if peer_block:
+        parts.append(peer_block)
+        parts.extend([
+            "",
+            "DECISION MEMO REQUIREMENT:",
+            "- better_than_peer: cite specific metric advantages over named peers above",
+            "- safer_than_peer: cite specific balance sheet / risk advantages vs named peers",
+            "- what_makes_wrong: cite the most fragile assumption that could invalidate the thesis",
+        ])
+    parts.extend([
         "",
         "RAW CANDIDATE DATA (for cross-reference):",
         json.dumps(raw_candidate, indent=2),
-    ]
+    ])
     if validator_objections:
         parts.extend([
             "",
@@ -808,6 +915,7 @@ class ClaudeAnalystClient:
         *,
         sector_knowledge: dict | None = None,
         validator_objections: list[dict] | None = None,
+        peer_context: list[dict] | None = None,
     ) -> dict:
         """Analyze a single raw candidate via the 3-stage pipeline."""
         ticker = raw_candidate.get("ticker", "UNKNOWN")
@@ -840,6 +948,7 @@ class ClaudeAnalystClient:
                 _build_qualitative_system_prompt(sector_knowledge),
                 _build_qualitative_user_prompt(
                     raw_candidate, evidence_context, evidence_snippets, fundamentals_output,
+                    peer_context=peer_context,
                 ),
                 ticker,
             )
@@ -859,6 +968,7 @@ class ClaudeAnalystClient:
             _build_synthesis_user_prompt(
                 raw_candidate, fundamentals_output, qualitative_output,
                 validator_objections=validator_objections,
+                peer_context=peer_context,
             ),
             ticker,
             timeout=self.synthesis_timeout,
@@ -883,6 +993,7 @@ def generate_llm_analysis_draft(
     client: ClaudeAnalystClient,
     sector_knowledge: dict | None = None,
     validator_objections: list[dict] | None = None,
+    peer_context: list[dict] | None = None,
 ) -> dict:
     """Generate a complete LLM-drafted structured analysis overlay.
 
@@ -906,6 +1017,7 @@ def generate_llm_analysis_draft(
         candidate_output = client.analyze(
             raw_candidate, sector_knowledge=sector_knowledge,
             validator_objections=validator_objections,
+            peer_context=peer_context,
         )
         _coerce_analysis_types(candidate_output.get("analysis_inputs", {}))
 

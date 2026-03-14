@@ -230,9 +230,12 @@ def _analysis_inputs(raw_candidate: dict) -> tuple[dict, list[dict]]:
         {"trigger": risks[0] if risks else "No explicit trigger identified", "evidence": "Machine draft from fetched risk evidence."},
     ]
 
+    # Build decision memo — include peer tickers if available from raw candidate
+    peer_tickers = raw_candidate.get("peer_tickers", [])
+    peer_note = f" Peers: {', '.join(peer_tickers)}." if peer_tickers else ""
     decision_memo = {
-        "better_than_peer": "Machine draft: requires human assessment of peer comparison.",
-        "safer_than_peer": "Machine draft: requires human assessment of safety vs peers.",
+        "better_than_peer": f"Machine draft: requires human assessment of peer comparison.{peer_note}",
+        "safer_than_peer": f"Machine draft: requires human assessment of safety vs peers.{peer_note}",
         "what_makes_wrong": risks[0] if risks else "Machine draft: no explicit wrong-case identified in fetched sources.",
     }
 
@@ -425,37 +428,37 @@ def _epistemic_inputs(raw_candidate: dict, dominant_risk_type: str) -> tuple[dic
             "evidence": evidence,
         }
 
-    q1_answer = "Yes" if dominant_risk_type == "Operational/Financial" else "No"
-    q2_answer = "No" if dominant_risk_type in {"Regulatory/Political", "Legal/Investigation"} else "Yes"
-    q3_answer = "Yes" if precedent else "No"
-    q4_answer = "No" if dominant_risk_type == "Legal/Investigation" else "Yes"
-    q5_answer = "No" if dominant_risk_type == "Cyclical/Macro" else "Yes"
+    q1_answer = "STRONG" if dominant_risk_type == "Operational/Financial" else "MODERATE"
+    q2_answer = "WEAK" if dominant_risk_type in {"Regulatory/Political", "Legal/Investigation"} else "STRONG"
+    q3_answer = "STRONG" if precedent else "WEAK"
+    q4_answer = "WEAK" if dominant_risk_type == "Legal/Investigation" else "MODERATE"
+    q5_answer = "WEAK" if dominant_risk_type == "Cyclical/Macro" else "STRONG"
 
     epistemic_inputs = {
-        "q1_operational": pcs(
+        "q1_operational_feasibility": pcs(
             q1_answer,
-            "Machine draft maps the dominant risk type into the PCS operational question.",
+            "Machine draft assesses operational feasibility based on dominant risk type.",
             anchors[0] if anchors else (risks[0] if risks else "No specific operational anchor was found."),
         ),
-        "q2_regulatory": pcs(
+        "q2_risk_bounded": pcs(
             q2_answer,
-            "Machine draft answers No when risk snippets imply regulatory or legal exposure; otherwise Yes.",
-            risks[0] if risks else "No regulatory warning surfaced in fetched snippets.",
+            "Machine draft assesses whether risk is evidence-backed or assumption-based.",
+            risks[0] if risks else "No risk evidence surfaced in fetched snippets.",
         ),
-        "q3_precedent": pcs(
+        "q3_precedent_grounded": pcs(
             q3_answer,
-            "Machine draft answers Yes only when precedent observations are present.",
+            "Machine draft assesses alignment with historical base rates.",
             precedent[0] if precedent else "No precedent observation surfaced in fetched snippets.",
         ),
-        "q4_nonbinary": pcs(
+        "q4_downside_steelmanned": pcs(
             q4_answer,
-            "Machine draft treats legal/investigation risk as more binary than operational or cyclical drift.",
-            risks[0] if risks else "No binary-risk warning surfaced in fetched snippets.",
+            "Machine draft assesses bear case quality based on risk type complexity.",
+            risks[0] if risks else "No downside scenario surfaced in fetched snippets.",
         ),
-        "q5_macro": pcs(
+        "q5_catalyst_concrete": pcs(
             q5_answer,
-            "Machine draft answers No only when macro/cyclical language dominates the risk snippets.",
-            risks[0] if risks else "No macro warning surfaced in fetched snippets.",
+            "Machine draft assesses catalyst concreteness vs management-will-execute assumptions.",
+            risks[0] if risks else "No catalyst specificity surfaced in fetched snippets.",
         ),
     }
     provenance = [
@@ -468,9 +471,108 @@ def _epistemic_inputs(raw_candidate: dict, dominant_risk_type: str) -> tuple[dic
                 _evidence_ref("gemini_risk", "gemini_context.risk_evidence", risks[0] if risks else dominant_risk_type),
             ],
         )
-        for key in ["q1_operational", "q2_regulatory", "q3_precedent", "q4_nonbinary", "q5_macro"]
+        for key in ["q1_operational_feasibility", "q2_risk_bounded", "q3_precedent_grounded", "q4_downside_steelmanned", "q5_catalyst_concrete"]
     ]
     return epistemic_inputs, provenance
+
+
+def _thesis_invalidation_inputs(
+    raw_candidate: dict,
+    dominant_risk_type: str,
+) -> tuple[dict, list[dict]]:
+    """Generate MACHINE_DRAFT thesis invalidation from raw bundle risk signals.
+
+    Uses keyword scanning of Gemini risk_evidence snippets to seed each
+    category. Never produces strong_evidence — only the PreMortem LLM
+    can escalate to strong.
+    """
+    risks = _claims(raw_candidate, "risk_evidence")
+    risk_text = " ".join(risks).lower()
+
+    _CATEGORY_KEYWORDS: dict[str, tuple[list[str], str, str]] = {
+        "single_point_failure": (
+            ["single customer", "sole supplier", "concentration", "key person",
+             "single point", "key man", "one client"],
+            "Revenue concentration from top customer or key dependency",
+            "No SPOF risk identified in fetched sources.",
+        ),
+        "capital_structure": (
+            ["debt", "covenant", "liquidity", "refinancing", "insolvency",
+             "bankruptcy", "maturity wall", "leverage"],
+            "Net debt / EBITDA ratio and debt maturity schedule",
+            "No capital structure risk identified in fetched sources.",
+        ),
+        "regulatory": (
+            ["regulatory", "license", "policy", "government", "ban",
+             "compliance", "legislation", "fda", "antitrust"],
+            "Regulatory filing status or policy changes",
+            "No regulatory risk identified in fetched sources.",
+        ),
+        "tech_disruption": (
+            ["obsolete", "disruption", "technology", "ai replacement",
+             "substitute", "innovation", "displacement"],
+            "Market share vs emerging substitutes",
+            "No technology disruption risk identified in fetched sources.",
+        ),
+        "market_structure": (
+            ["secular decline", "shrinking market", "commoditization",
+             "price war", "overcapacity", "structural decline"],
+            "Industry TAM growth rate",
+            "No market structure risk identified in fetched sources.",
+        ),
+    }
+
+    conditions: list[dict] = []
+    for category, (keywords, metric, default_desc) in _CATEGORY_KEYWORDS.items():
+        matched_risk = next(
+            (r for r in risks if any(kw in r.lower() for kw in keywords)),
+            None,
+        )
+        has_match = any(kw in risk_text for kw in keywords)
+        conditions.append({
+            "category": category,
+            "risk_description": matched_risk or default_desc,
+            "early_warning_metric": metric,
+            "evidence_status": "weak_evidence" if has_match else "no_current_evidence",
+            "rationale": (
+                f"Machine draft: keyword match in risk evidence."
+                if has_match
+                else "Machine draft: no keyword match found in fetched risk evidence."
+            ),
+        })
+
+    imminent = any(c["evidence_status"] == "strong_evidence" for c in conditions)
+    thesis_invalidation = {
+        "conditions": conditions,
+        "imminent_break_flag": imminent,
+    }
+
+    provenance = [
+        _field_provenance(
+            "thesis_invalidation.imminent_break_flag",
+            "Imminent break flag set based on whether any condition has strong_evidence.",
+            [_evidence_ref(
+                "machine_rule",
+                "thesis_invalidation.conditions",
+                f"imminent={imminent}",
+            )],
+        ),
+    ]
+    for category in _CATEGORY_KEYWORDS:
+        provenance.append(
+            _field_provenance(
+                f"thesis_invalidation.cond.{category}",
+                f"Thesis invalidation condition for {category} drafted from "
+                f"keyword scan of risk evidence snippets.",
+                [_evidence_ref(
+                    "gemini_risk",
+                    "gemini_context.risk_evidence",
+                    f"{len(risks)} risk snippets scanned",
+                )],
+            )
+        )
+
+    return thesis_invalidation, provenance
 
 
 def generate_structured_analysis_draft(raw_bundle: dict) -> dict:
@@ -486,15 +588,17 @@ def generate_structured_analysis_draft(raw_bundle: dict) -> dict:
         screening_inputs, screening_provenance = _screening_inputs(raw_candidate)
         analysis_inputs, analysis_provenance = _analysis_inputs(raw_candidate)
         epistemic_inputs, epistemic_provenance = _epistemic_inputs(raw_candidate, analysis_inputs["dominant_risk_type"])
+        thesis_invalidation, thesis_provenance = _thesis_invalidation_inputs(raw_candidate, analysis_inputs["dominant_risk_type"])
         structured_candidates.append(
             {
                 "ticker": raw_candidate["ticker"],
                 "evidence_context": evidence_context,
                 "evidence_fingerprint": _fingerprint(evidence_context),
-                "field_provenance": screening_provenance + analysis_provenance + epistemic_provenance,
+                "field_provenance": screening_provenance + analysis_provenance + epistemic_provenance + thesis_provenance,
                 "screening_inputs": screening_inputs,
                 "analysis_inputs": analysis_inputs,
                 "epistemic_inputs": epistemic_inputs,
+                "thesis_invalidation": thesis_invalidation,
             }
         )
 

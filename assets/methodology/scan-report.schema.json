@@ -6,27 +6,56 @@
       "type": "object",
       "required": ["answer", "justification", "evidence"],
       "properties": {
-        "answer": { "type": "string", "enum": ["Yes", "No"] },
+        "answer": { "type": "string", "enum": ["STRONG", "MODERATE", "WEAK"] },
         "justification": { "type": "string" },
         "evidence": { "type": "string" }
+      }
+    },
+    "thesis_invalidation_condition": {
+      "type": "object",
+      "required": ["category", "risk_description", "early_warning_metric", "evidence_status", "rationale"],
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": ["single_point_failure", "capital_structure", "regulatory", "tech_disruption", "market_structure"]
+        },
+        "risk_description": { "type": "string" },
+        "early_warning_metric": { "type": "string" },
+        "evidence_status": {
+          "type": "string",
+          "enum": ["no_current_evidence", "weak_evidence", "strong_evidence"]
+        },
+        "rationale": { "type": "string" }
+      }
+    },
+    "thesis_invalidation": {
+      "type": "object",
+      "required": ["conditions", "imminent_break_flag"],
+      "properties": {
+        "conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/thesis_invalidation_condition" }
+        },
+        "imminent_break_flag": { "type": "boolean" }
       }
     },
     "epistemic_confidence": {
       "type": "object",
       "required": [
-        "q1_operational", "q2_regulatory", "q3_precedent",
-        "q4_nonbinary", "q5_macro",
+        "q1_operational_feasibility", "q2_risk_bounded", "q3_precedent_grounded",
+        "q4_downside_steelmanned", "q5_catalyst_concrete",
         "no_count", "raw_confidence",
         "risk_type", "risk_type_friction",
         "adjusted_confidence", "multiplier",
         "effective_probability"
       ],
       "properties": {
-        "q1_operational": { "$ref": "#/$defs/pcs_check" },
-        "q2_regulatory": { "$ref": "#/$defs/pcs_check" },
-        "q3_precedent": { "$ref": "#/$defs/pcs_check" },
-        "q4_nonbinary": { "$ref": "#/$defs/pcs_check" },
-        "q5_macro": { "$ref": "#/$defs/pcs_check" },
+        "q1_operational_feasibility": { "$ref": "#/$defs/pcs_check" },
+        "q2_risk_bounded": { "$ref": "#/$defs/pcs_check" },
+        "q3_precedent_grounded": { "$ref": "#/$defs/pcs_check" },
+        "q4_downside_steelmanned": { "$ref": "#/$defs/pcs_check" },
+        "q5_catalyst_concrete": { "$ref": "#/$defs/pcs_check" },
         "no_count": { "type": "integer", "minimum": 0, "maximum": 5 },
         "raw_confidence": { "type": "integer", "minimum": 1, "maximum": 5 },
         "risk_type": {

@@ -9,7 +9,7 @@ from .pipeline import load_scan_input_template_text, scan_input_template, valida
 
 
 RAW_CHECK_ORDER = ["solvency", "dilution", "revenue_growth", "roic", "valuation"]
-RAW_PCS_ORDER = ["q1_operational", "q2_regulatory", "q3_precedent", "q4_nonbinary", "q5_macro"]
+RAW_PCS_ORDER = ["q1_operational_feasibility", "q2_risk_bounded", "q3_precedent_grounded", "q4_downside_steelmanned", "q5_catalyst_concrete"]
 RAW_GEMINI_EVIDENCE_ORDER = [
     "research_notes",
     "catalyst_evidence",
@@ -300,6 +300,12 @@ def _import_analysis(raw_candidate: dict) -> dict:
         }
         if "reason" in exception_candidate:
             analysis["exception_20_pct_gate"]["reason"] = exception_candidate["reason"]
+
+    # Thread thesis_invalidation from structured overlay
+    if "thesis_invalidation" in raw_candidate:
+        analysis["thesis_invalidation"] = raw_candidate["thesis_invalidation"]
+    elif "thesis_invalidation" in analysis_inputs:
+        analysis["thesis_invalidation"] = analysis_inputs["thesis_invalidation"]
 
     _enrich_analysis_with_gemini(raw_candidate, analysis)
     return analysis

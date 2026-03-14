@@ -2,14 +2,14 @@
 
 Provides independent confidence review that challenges the analyst's thesis
 using only qualitative context -- provably blind to scores, probabilities,
-and valuations. Produces 5 PCS answers with evidence anchoring and three
-evidence quality detectors (WEAK_EVIDENCE, NO_EVIDENCE friction, laundering).
+and valuations. Produces 5 PCS answers with 3-tier grading (STRONG/MODERATE/WEAK),
+evidence anchoring, and evidence quality detectors (WEAK_EVIDENCE, laundering).
 """
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from .llm_transport import default_anthropic_transport, parse_llm_json
@@ -29,6 +29,9 @@ class EpistemicReviewInput:
     - probabilities, base_probability_pct, effective_probability
     - valuations, target_price, floor_price, base_case, worst_case
     - numeric targets, cagr_pct, downside_pct
+
+    trailing_ratios are historical performance ratios (not forward predictions,
+    not absolute dollar amounts, not prices). Safe to pass through the barrier.
     """
     ticker: str
     industry: str
@@ -37,15 +40,25 @@ class EpistemicReviewInput:
     catalysts: list[str]
     moat_assessment: str
     dominant_risk_type: str
+    company_description: str = ""
+    trailing_ratios: dict = field(default_factory=dict)
 
 
-def extract_epistemic_input(overlay_candidate: dict) -> EpistemicReviewInput:
+def extract_epistemic_input(
+    overlay_candidate: dict,
+    raw_candidate: dict | None = None,
+) -> EpistemicReviewInput:
     """Extract restricted input from analyst overlay.
 
     Only copies fields listed in the epistemic_review contract.
     All numeric scores, probabilities, and valuations are dropped.
     """
     analysis = overlay_candidate.get("analysis_inputs", {})
+    company_description = ""
+    trailing_ratios = {}
+    if raw_candidate:
+        company_description = raw_candidate.get("company_description", "")
+        trailing_ratios = raw_candidate.get("trailing_ratios", {})
     return EpistemicReviewInput(
         ticker=overlay_candidate["ticker"],
         industry=overlay_candidate.get("industry", ""),
@@ -54,6 +67,8 @@ def extract_epistemic_input(overlay_candidate: dict) -> EpistemicReviewInput:
         catalysts=analysis.get("catalysts", []),
         moat_assessment=analysis.get("moat_assessment", ""),
         dominant_risk_type=analysis.get("dominant_risk_type", ""),
+        company_description=company_description,
+        trailing_ratios=trailing_ratios,
     )
 
 
@@ -73,8 +88,16 @@ WEAK_EVIDENCE_PATTERNS = [
 ]
 
 CONCRETE_SOURCE_MARKERS = [
+    # SEC / IR sources
     "10-k", "10-q", "earnings call", "sec filing",
     "annual report", "press release", "investor presentation",
+    # FMP quantitative sources
+    "fmp", "financial statements", "income statement",
+    "balance sheet", "cash flow statement", "key metrics",
+    # Gemini qualitative sources
+    "seeking alpha", "fintool", "grounded search",
+    # Sector knowledge
+    "sector knowledge",
 ]
 
 
@@ -91,22 +114,6 @@ def is_weak_evidence(evidence_text: str) -> bool:
     has_concrete = any(marker in lower for marker in CONCRETE_SOURCE_MARKERS)
     has_vague = any(pattern in lower for pattern in WEAK_EVIDENCE_PATTERNS)
     return has_vague or not has_concrete
-
-
-# ---------------------------------------------------------------------------
-# EPST-05: NO_EVIDENCE friction
-# ---------------------------------------------------------------------------
-
-def calculate_no_evidence_friction(pcs_answers: dict) -> int:
-    """Return additional friction penalty for NO_EVIDENCE answers.
-
-    >= 3 NO_EVIDENCE answers triggers -1 additional friction.
-    """
-    no_evidence_count = sum(
-        1 for q in pcs_answers.values()
-        if isinstance(q, dict) and q.get("evidence_source", "").upper() == "NO_EVIDENCE"
-    )
-    return -1 if no_evidence_count >= 3 else 0
 
 
 # ---------------------------------------------------------------------------
@@ -149,8 +156,8 @@ def detect_pcs_laundering(
 # ---------------------------------------------------------------------------
 
 _PCS_QUESTION_KEYS = [
-    "q1_operational", "q2_regulatory", "q3_precedent",
-    "q4_nonbinary", "q5_macro",
+    "q1_operational_feasibility", "q2_risk_bounded", "q3_precedent_grounded",
+    "q4_downside_steelmanned", "q5_catalyst_concrete",
 ]
 
 EPISTEMIC_OUTPUT_SCHEMA: dict = {
@@ -163,7 +170,7 @@ EPISTEMIC_OUTPUT_SCHEMA: dict = {
             "required": ["answer", "justification", "evidence", "evidence_source"],
             "additionalProperties": False,
             "properties": {
-                "answer": {"type": "string", "enum": ["Yes", "No"]},
+                "answer": {"type": "string", "enum": ["STRONG", "MODERATE", "WEAK"]},
                 "justification": {"type": "string"},
                 "evidence": {"type": "string"},
                 "evidence_source": {"type": "string"},
@@ -210,31 +217,40 @@ class EpistemicReviewerClient:
             "You are an independent epistemic reviewer for the EdenFinTech scan pipeline.",
             "",
             "CRITICAL RULE: You operate under an INFORMATION BARRIER.",
-            "You will receive ONLY qualitative context: thesis, risks, catalysts, moat, and risk type.",
+            "You will receive ONLY qualitative context: thesis, risks, catalysts, moat, risk type,",
+            "and trailing financial ratios (historical, not forward-looking).",
             "You do NOT have access to any scores, probabilities, valuations, or numeric targets.",
-            "Your role is to independently assess confidence by answering 5 PCS questions.",
+            "Your role is to independently assess the REASONING QUALITY of the analyst's thesis",
+            "by answering 5 PCS questions.",
+            "",
+            "You have been provided with trailing financial ratios computed from audited financial",
+            "statements. Use them to verify claims in the thesis and risk narratives.",
             "",
             "PCS (Probabilistic Confidence Score) QUESTIONS:",
             "",
-            "Q1 - Operational (q1_operational):",
-            "  Is this primarily an operational/financial situation where management actions can drive recovery?",
-            "  Yes = management has clear levers. No = situation is outside management control.",
+            "Q1 - Operational Feasibility (q1_operational_feasibility):",
+            "  Given the trailing financials, does the company have the runway and levers",
+            "  to execute the stated turnaround?",
             "",
-            "Q2 - Regulatory (q2_regulatory):",
-            "  Is regulatory/political discretion LIMITED (i.e., outcomes are more predictable)?",
-            "  Yes = regulatory risk is bounded. No = regulator has wide discretion over outcomes.",
+            "Q2 - Risk Bounded (q2_risk_bounded):",
+            "  Is the analyst's assessment of the dominant risk supported by specific evidence",
+            "  or precedent, not just assumptions?",
             "",
-            "Q3 - Precedent (q3_precedent):",
-            "  Are there clear historical precedents for this type of recovery/situation?",
-            "  Yes = comparable situations have played out before. No = this is novel/unprecedented.",
+            "Q3 - Precedent Grounded (q3_precedent_grounded):",
+            "  Does the thesis align with historical base rates for this type of situation,",
+            "  or does it rely on unprecedented outcomes?",
             "",
-            "Q4 - Non-binary (q4_nonbinary):",
-            "  Are outcomes distributed (non-binary) rather than all-or-nothing?",
-            "  Yes = multiple recovery paths exist. No = outcome is binary (works or fails completely).",
+            "Q4 - Downside Steelmanned (q4_downside_steelmanned):",
+            "  Has the analyst adequately steelmanned the bear case, or is the worst case",
+            "  a weak strawman?",
             "",
-            "Q5 - Macro (q5_macro):",
-            "  Is macro exposure manageable and not the dominant risk factor?",
-            "  Yes = macro is a secondary factor. No = macro conditions dominate the thesis.",
+            "Q5 - Catalyst Concrete (q5_catalyst_concrete):",
+            "  Are the catalysts exogenous and verifiable, or merely 'management will execute better'?",
+            "",
+            "3-TIER GRADING (use instead of Yes/No):",
+            "- STRONG: well-supported, evidence-backed reasoning",
+            "- MODERATE: partially supported, gaps or ambiguity present",
+            "- WEAK: unsupported, flawed reasoning, or inapplicable",
             "",
             "EVIDENCE RULES:",
             "- Each answer MUST include an evidence_source field.",
@@ -248,18 +264,37 @@ class EpistemicReviewerClient:
 
     def _build_user_prompt(self, review_input: EpistemicReviewInput) -> str:
         """Format review input for the user message."""
-        return "\n".join([
+        lines = [
             f"Ticker: {review_input.ticker}",
             f"Industry: {review_input.industry}",
+        ]
+        if review_input.company_description:
+            lines.append(f"Company Description: {review_input.company_description}")
+        lines += [
             f"Dominant Risk Type: {review_input.dominant_risk_type}",
             "",
             f"Thesis Summary: {review_input.thesis_summary}",
+        ]
+
+        # Add trailing ratios section if available
+        if review_input.trailing_ratios:
+            lines.append("")
+            lines.append("Trailing Financial Ratios (from audited statements):")
+            for key, value in review_input.trailing_ratios.items():
+                label = key.replace("_", " ").title()
+                if value is not None:
+                    lines.append(f"  {label}: {value}")
+                else:
+                    lines.append(f"  {label}: N/A")
+
+        return "\n".join(lines + [
             "",
             f"Key Risks: {json.dumps(review_input.key_risks)}",
             f"Catalysts: {json.dumps(review_input.catalysts)}",
             f"Moat Assessment: {review_input.moat_assessment}",
             "",
             "Answer all 5 PCS questions based on the context above.",
+            "Grade each as STRONG, MODERATE, or WEAK.",
         ])
 
     def review(self, review_input: EpistemicReviewInput) -> dict:
@@ -298,7 +333,7 @@ def epistemic_review(
     only qualitative analysis context, never numeric scores or valuations.
 
     Returns enriched result dict containing PCS answers + metadata
-    (weak_evidence_flags, no_evidence_count, additional_friction).
+    (weak_evidence_flags, no_evidence_count).
     """
     if not isinstance(review_input, EpistemicReviewInput):
         raise TypeError(
@@ -322,11 +357,8 @@ def epistemic_review(
         if evidence_source.upper() == "NO_EVIDENCE":
             no_evidence_count += 1
 
-    additional_friction = calculate_no_evidence_friction(pcs_answers)
-
     result = dict(pcs_answers)
     result["weak_evidence_flags"] = weak_evidence_flags
     result["no_evidence_count"] = no_evidence_count
-    result["additional_friction"] = additional_friction
 
     return result

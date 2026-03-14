@@ -34,7 +34,7 @@ CHECK_LABELS = {
     "valuation": "Valuation",
 }
 VALID_VERDICTS = {"PASS", "BORDERLINE_PASS", "FAIL"}
-VALID_ANSWERS = {"Yes", "No"}
+VALID_ANSWERS = {"STRONG", "MODERATE", "WEAK"}
 VALID_SCAN_MODES = {"full_nyse", "sector", "specific_tickers"}
 
 
@@ -179,7 +179,7 @@ def _validate_issues_and_fixes(candidate: dict, ticker: str) -> None:
 def _validate_pcs_answers(candidate: dict) -> dict[str, dict[str, str]]:
     pcs = _require_dict(candidate.get("epistemic_review"), f"{candidate['ticker']}.epistemic_review")
     answers: dict[str, dict[str, str]] = {}
-    for key in ["q1_operational", "q2_regulatory", "q3_precedent", "q4_nonbinary", "q5_macro"]:
+    for key in ["q1_operational_feasibility", "q2_risk_bounded", "q3_precedent_grounded", "q4_downside_steelmanned", "q5_catalyst_concrete"]:
         check = _require_dict(pcs.get(key), f"{candidate['ticker']}.epistemic_review.{key}")
         answer = _require_nonempty_string(check.get("answer"), f"{candidate['ticker']}.epistemic_review.{key}.answer")
         if answer not in VALID_ANSWERS:
@@ -286,7 +286,7 @@ def _analysis_rejection_packet(
         packet["score"] = score
     if epi is not None:
         packet["epistemic_confidence"] = epi
-    for optional_key in ["thesis_summary", "catalysts", "key_risks", "structural_diagnosis", "key_financials", "source_research"]:
+    for optional_key in ["thesis_summary", "catalysts", "key_risks", "structural_diagnosis", "key_financials", "source_research", "thesis_invalidation"]:
         if optional_key in candidate["analysis"]:
             packet[optional_key] = candidate["analysis"][optional_key]
     return packet
@@ -343,10 +343,132 @@ def _ranked_candidate_packet(
             "human_judgment_flags": list(analysis.get("human_judgment_flags", [])),
         },
     }
-    for optional_key in ["thesis_summary", "catalysts", "key_risks", "issues_and_fixes", "moat_assessment", "source_research"]:
+    for optional_key in ["thesis_summary", "catalysts", "key_risks", "issues_and_fixes", "moat_assessment", "source_research", "thesis_invalidation"]:
         if optional_key in analysis:
             packet[optional_key] = analysis[optional_key]
     return packet
+
+
+def rank_within_cluster(candidates: list[dict]) -> list[dict]:
+    """Deterministic within-cluster peer ranking per codex priority order.
+
+    Scores each candidate on:
+      - Balance sheet strength (40%): debt_to_equity, solvency verdict
+      - Margin durability (25%): fcf_margin trend, ROIC median
+      - Catalyst capture (20%): HARD > MEDIUM > SOFT count
+      - Optionality/upside (15%): CAGR spread (stretch - worst)
+
+    Assigns final_cluster_status and ranking_rationale.
+    Returns candidates with cluster_rank populated.
+    """
+    if len(candidates) < 2:
+        for c in candidates:
+            c.setdefault("peer_comparison", {})
+            c["peer_comparison"]["cluster_rank"] = 1
+            c["peer_comparison"]["ranking_rationale"] = "Only candidate in cluster"
+        return candidates
+
+    scored: list[tuple[float, dict]] = []
+    for candidate in candidates:
+        analysis = candidate.get("analysis", {})
+        screening = candidate.get("screening", {})
+        checks = screening.get("checks", {})
+
+        # Balance sheet strength (40%)
+        solvency = checks.get("solvency", {}).get("verdict", "FAIL")
+        balance_score = 1.0 if solvency == "PASS" else (0.5 if solvency == "BORDERLINE_PASS" else 0.0)
+
+        worst_case = analysis.get("worst_case", {})
+        # Lower floor downside = stronger balance sheet support
+        downside = abs(worst_case.get("downside_pct", 50.0)) if "downside_pct" in worst_case else 50.0
+        balance_score += max(0.0, 1.0 - downside / 100.0)
+        balance_component = (balance_score / 2.0) * 0.40
+
+        # Margin durability (25%)
+        margin_gate = analysis.get("margin_trend_gate", "PASS")
+        margin_score = 0.0 if margin_gate == "PERMANENT_PASS" else 1.0
+        # Boost if FCF margin data is positive
+        wc_fcf = worst_case.get("fcf_margin_pct", 0.0)
+        if isinstance(wc_fcf, (int, float)) and wc_fcf > 0:
+            margin_score += min(wc_fcf / 20.0, 1.0)
+        margin_component = (margin_score / 2.0) * 0.25
+
+        # Catalyst capture (20%)
+        catalyst_stack = analysis.get("catalyst_stack", [])
+        hard_count = sum(1 for c in catalyst_stack if c.get("type") == "HARD")
+        medium_count = sum(1 for c in catalyst_stack if c.get("type") == "MEDIUM")
+        catalyst_score = min((hard_count * 2 + medium_count) / 4.0, 1.0)
+        catalyst_component = catalyst_score * 0.20
+
+        # Optionality/upside (15%)
+        base_case = analysis.get("base_case", {})
+        base_cagr = base_case.get("cagr_pct", 0.0)
+        if not isinstance(base_cagr, (int, float)):
+            base_cagr = 0.0
+        stretch = analysis.get("stretch_case", {})
+        stretch_cagr = stretch.get("cagr_pct", base_cagr)
+        if not isinstance(stretch_cagr, (int, float)):
+            stretch_cagr = base_cagr
+        upside_spread = max(stretch_cagr - base_cagr, 0.0)
+        upside_score = min(upside_spread / 30.0, 1.0)
+        upside_component = upside_score * 0.15
+
+        total = balance_component + margin_component + catalyst_component + upside_component
+        scored.append((total, candidate))
+
+    # Sort by score descending
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top_score = scored[0][0] if scored else 0.0
+
+    for rank_idx, (score, candidate) in enumerate(scored, start=1):
+        candidate.setdefault("peer_comparison", {})
+        candidate["peer_comparison"]["cluster_rank"] = rank_idx
+        candidate["peer_comparison"]["cluster_score"] = round(score, 4)
+
+        # Assign final_cluster_status based on relative score
+        if top_score > 0:
+            pct_of_top = score / top_score
+        else:
+            pct_of_top = 1.0
+
+        analysis = candidate.get("analysis", {})
+        margin_gate = analysis.get("margin_trend_gate", "PASS")
+
+        if margin_gate == "PERMANENT_PASS":
+            status = "ELIMINATED"
+            rationale = "5yr margin decline triggers elimination"
+        elif rank_idx == 1:
+            status = "CLEAR_WINNER"
+            rationale = f"Top scorer ({score:.3f})"
+        elif pct_of_top >= 0.90:
+            status = "CONDITIONAL_WINNER"
+            rationale = f"Within 10% of top scorer ({pct_of_top:.0%})"
+        else:
+            # Check Keep/Cut: keep backup if passed all filters AND materially higher returns
+            screening = candidate.get("screening", {})
+            all_passed = all(
+                screening.get("checks", {}).get(ck, {}).get("verdict") in ("PASS", "BORDERLINE_PASS")
+                for ck in CHECK_ORDER
+            )
+            base_cagr = analysis.get("base_case", {}).get("cagr_pct", 0.0)
+            if not isinstance(base_cagr, (int, float)):
+                base_cagr = 0.0
+
+            if all_passed and base_cagr >= 30.0:
+                status = "LOWER_PRIORITY"
+                rationale = f"Backup: passed filters, CAGR {base_cagr:.1f}%"
+            elif len(scored) < 3:
+                # Few alternatives — keep everyone who passed
+                status = "LOWER_PRIORITY"
+                rationale = f"Kept: <3 candidates in cluster"
+            else:
+                status = "ELIMINATED"
+                rationale = f"Cut: inferior ({pct_of_top:.0%} of top) with alternatives available"
+
+        candidate["peer_comparison"]["ranking_rationale"] = rationale
+        candidate["peer_comparison"]["final_cluster_status"] = status
+
+    return [c for _, c in scored]
 
 
 def validate_scan_input(payload: dict) -> None:
@@ -545,6 +667,18 @@ def run_scan_with_judge(
         base_case, base_cagr = _base_case_details(candidate)
         worst_case, downside = _worst_case_details(candidate)
         probability, normalized_probability = _probability_details(candidate)
+
+        # Thesis invalidation: weak_evidence penalty (LLM-confirmed only)
+        thesis_inv = analysis.get("thesis_invalidation")
+        if thesis_inv:
+            weak_count = sum(
+                1 for c in thesis_inv.get("conditions", [])
+                if c.get("evidence_status") == "weak_evidence"
+            )
+            if weak_count > 0:
+                penalty = min(weak_count * 5.0, 15.0)
+                normalized_probability = max(normalized_probability - penalty, 0.0)
+
         pre_score = decision_score(downside, normalized_probability, base_cagr)
 
         if analysis["margin_trend_gate"] == "PERMANENT_PASS":
@@ -561,7 +695,12 @@ def run_scan_with_judge(
             execution_log_entries.append(f"{candidate['ticker']}: rejected at analysis (permanent pass)")
             continue
 
-        if analysis["catalyst_classification"] != "VALID_CATALYST":
+        catalyst_stack = analysis.get("catalyst_stack", [])
+        hard_medium_count = sum(
+            1 for c in catalyst_stack
+            if isinstance(c, dict) and c.get("type") in ("HARD", "MEDIUM")
+        )
+        if analysis["catalyst_classification"] != "VALID_CATALYST" and hard_medium_count == 0:
             rejected_analysis.append(
                 _analysis_rejection_packet(
                     candidate,
@@ -574,6 +713,11 @@ def run_scan_with_judge(
             )
             execution_log_entries.append(f"{candidate['ticker']}: rejected at analysis (no valid catalyst)")
             continue
+        if analysis["catalyst_classification"] != "VALID_CATALYST" and hard_medium_count > 0:
+            execution_log_entries.append(
+                f"{candidate['ticker']}: catalyst_classification={analysis['catalyst_classification']} "
+                f"overridden by catalyst_stack ({hard_medium_count} HARD/MEDIUM entries)"
+            )
 
         if analysis["final_cluster_status"] == "ELIMINATED":
             rejected_analysis.append(
@@ -654,6 +798,34 @@ def run_scan_with_judge(
                 }
             )
             execution_log_entries.append(f"{candidate['ticker']}: full analysis complete; routed to pending human review")
+            continue
+
+        # Thesis invalidation: imminent break hard gate
+        if thesis_inv and thesis_inv.get("imminent_break_flag"):
+            strong_cats = [
+                c["category"] for c in thesis_inv.get("conditions", [])
+                if c.get("evidence_status") == "strong_evidence"
+            ]
+            rejected_analysis.append(
+                _analysis_rejection_packet(
+                    candidate,
+                    f"THESIS_BREAK_IMMINENT: Strong evidence of structural break in categories: {', '.join(strong_cats)}.",
+                    base_case=base_case,
+                    worst_case=worst_case,
+                    probability=probability,
+                    score={
+                        "pre_epistemic": pre_score.__dict__,
+                        "post_epistemic": {
+                            **post_score.__dict__,
+                            "effective_probability": epi_result.effective_probability,
+                        },
+                    },
+                    epi=epi_payload,
+                )
+            )
+            execution_log_entries.append(
+                f"{candidate['ticker']}: rejected at analysis (THESIS_BREAK_IMMINENT: {', '.join(strong_cats)})"
+            )
             continue
 
         if epi_result.effective_probability < 60.0:
@@ -901,11 +1073,11 @@ def scan_input_template() -> dict:
                     },
                 },
                 "epistemic_review": {
-                    "q1_operational": {"answer": "Yes", "justification": "Operational issues dominate.", "evidence": "Management plan and filings."},
-                    "q2_regulatory": {"answer": "Yes", "justification": "Regulatory discretion is limited.", "evidence": "Stable operating regime."},
-                    "q3_precedent": {"answer": "Yes", "justification": "Comparable turnarounds exist.", "evidence": "Named industry precedents."},
-                    "q4_nonbinary": {"answer": "Yes", "justification": "Outcomes are distributed rather than binary.", "evidence": "Multiple recovery paths exist."},
-                    "q5_macro": {"answer": "Yes", "justification": "Macro exposure is manageable.", "evidence": "Demand is mostly domestic and recurring."},
+                    "q1_operational_feasibility": {"answer": "STRONG", "justification": "Company has runway and levers to execute turnaround.", "evidence": "Management plan and filings."},
+                    "q2_risk_bounded": {"answer": "STRONG", "justification": "Risk assessment is evidence-backed.", "evidence": "Stable operating regime."},
+                    "q3_precedent_grounded": {"answer": "STRONG", "justification": "Thesis aligns with historical base rates.", "evidence": "Named industry precedents."},
+                    "q4_downside_steelmanned": {"answer": "STRONG", "justification": "Bear case is adequately steelmanned.", "evidence": "Multiple downside scenarios considered."},
+                    "q5_catalyst_concrete": {"answer": "STRONG", "justification": "Catalysts are exogenous and verifiable.", "evidence": "Specific catalyst timeline and triggers."},
                 },
             }
         ],

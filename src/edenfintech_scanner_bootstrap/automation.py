@@ -28,13 +28,13 @@ from .epistemic_reviewer import (
 from .live_scan import run_live_scan
 from .sector import ensure_sector_knowledge
 from .structured_analysis import finalize_structured_analysis
-from .validator import RedTeamValidatorClient, validate_overlay
+from .validator import PreMortemValidatorClient, RedTeamValidatorClient, validate_overlay
 
 logger = logging.getLogger(__name__)
 
 _PCS_QUESTION_KEYS = [
-    "q1_operational", "q2_regulatory", "q3_precedent",
-    "q4_nonbinary", "q5_macro",
+    "q1_operational_feasibility", "q2_risk_bounded", "q3_precedent_grounded",
+    "q4_downside_steelmanned", "q5_catalyst_concrete",
 ]
 
 
@@ -109,9 +109,11 @@ def auto_analyze(
     fmp_transport: FmpTransport | None = None,
     analyst_client: ClaudeAnalystClient | None = None,
     validator_client: RedTeamValidatorClient | None = None,
+    premortem_client: PreMortemValidatorClient | None = None,
     epistemic_client: EpistemicReviewerClient | None = None,
     sector_knowledge: dict | None = None,
     gemini_cache: GeminiCacheStore | None = None,
+    peer_context: list[dict] | None = None,
     max_retries: int = 2,
 ) -> AutoAnalyzeResult:
     """Run the full automated analysis flow for a single ticker.
@@ -155,7 +157,7 @@ def auto_analyze(
                 )
 
     # Step 4: Create agent clients if not injected
-    if analyst_client is None or validator_client is None or epistemic_client is None:
+    if analyst_client is None or validator_client is None or epistemic_client is None or premortem_client is None:
         transport = _make_transport(config)
         api_key = (config.openai_api_key if config.llm_provider == "openai"
                    else config.anthropic_api_key)
@@ -172,6 +174,10 @@ def auto_analyze(
             )
         if validator_client is None:
             validator_client = RedTeamValidatorClient(
+                api_key, transport=transport,
+            )
+        if premortem_client is None:
+            premortem_client = PreMortemValidatorClient(
                 api_key, transport=transport,
             )
         if epistemic_client is None:
@@ -195,6 +201,7 @@ def auto_analyze(
                 client=analyst_client,
                 sector_knowledge=sector_knowledge,
                 validator_objections=objections,
+                peer_context=peer_context,
             )
             print("OK")
         except (ValueError, LlmResponseError) as exc:
@@ -236,9 +243,11 @@ def auto_analyze(
         overlay_candidate = draft["structured_candidates"][0]
         raw_candidate = merged_bundle["raw_candidates"][0]
 
-        print(f"[{ticker}] Step 4/6: Validator review{attempt_label} ...", end=" ", flush=True)
+        print(f"[{ticker}] Step 4/6: Validator review (parallel){attempt_label} ...", end=" ", flush=True)
         validation_result = validate_overlay(
-            overlay_candidate, raw_candidate, client=validator_client,
+            overlay_candidate, raw_candidate,
+            client=validator_client,
+            premortem_client=premortem_client,
         )
         verdict = validation_result["verdict"]
         print(verdict)
@@ -253,6 +262,21 @@ def auto_analyze(
                 print(f"[{ticker}] Validator concerns ({len(concerns)}):")
                 for i, c in enumerate(concerns, 1):
                     print(f"  {i}. {c}")
+            # Attach thesis_invalidation from pre-mortem validator
+            thesis_invalidation = validation_result.get("thesis_invalidation")
+            if thesis_invalidation is not None:
+                overlay_candidate["thesis_invalidation"] = thesis_invalidation
+                _save_llm_artifact(out_dir, f"premortem-result{suffix}.json", {"thesis_invalidation": thesis_invalidation})
+                imminent = thesis_invalidation.get("imminent_break_flag", False)
+                strong_count = sum(
+                    1 for c in thesis_invalidation.get("conditions", [])
+                    if c.get("evidence_status") == "strong_evidence"
+                )
+                weak_count = sum(
+                    1 for c in thesis_invalidation.get("conditions", [])
+                    if c.get("evidence_status") == "weak_evidence"
+                )
+                print(f"[{ticker}] Pre-mortem: imminent={imminent}, strong={strong_count}, weak={weak_count}")
             break
 
         # REJECT: collect objections and print them for operator visibility
@@ -277,7 +301,9 @@ def auto_analyze(
 
     # Step 6: Epistemic review (always runs)
     print(f"[{ticker}] Step 5/6: Epistemic review ...", end=" ", flush=True)
-    review_input = extract_epistemic_input(overlay_candidate)
+    review_input = extract_epistemic_input(
+        overlay_candidate, raw_candidate=merged_bundle["raw_candidates"][0],
+    )
     epistemic_result = epistemic_review(review_input, client=epistemic_client)
     print("OK")
 

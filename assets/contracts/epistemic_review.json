@@ -14,16 +14,17 @@
       "key_risks",
       "catalysts",
       "moat_assessment",
-      "dominant_risk_type"
+      "dominant_risk_type",
+      "trailing_ratios"
     ]
   },
   "outputs": {
     "required": [
-      "q1_operational",
-      "q2_regulatory",
-      "q3_precedent",
-      "q4_nonbinary",
-      "q5_macro",
+      "q1_operational_feasibility",
+      "q2_risk_bounded",
+      "q3_precedent_grounded",
+      "q4_downside_steelmanned",
+      "q5_catalyst_concrete",
       "no_count",
       "raw_confidence",
       "adjusted_confidence",
@@ -33,7 +34,7 @@
     ]
   },
   "enums": {
-    "answer": ["Yes", "No"],
+    "answer": ["STRONG", "MODERATE", "WEAK"],
     "dominant_risk_type": [
       "Operational/Financial",
       "Cyclical/Macro",
@@ -45,7 +46,7 @@
   "hard_checks": [
     "The reviewer must answer all five PCS questions for every candidate.",
     "Every answer must include an evidence anchor or NO_EVIDENCE.",
-    "Confidence must be derived from No-count first, then adjusted by deterministic risk-type friction."
+    "Confidence must be derived from grade scores first, then adjusted by deterministic risk-type friction."
   ],
   "failure_codes": [
     "pcs_answer_missing",

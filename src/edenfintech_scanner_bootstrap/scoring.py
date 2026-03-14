@@ -124,14 +124,27 @@ def confidence_cap_band(confidence: int) -> str | None:
     return "0%"
 
 
-def _raw_confidence_from_no_count(no_count: int) -> int:
-    if no_count == 0:
+_GRADE_SCORES = {"STRONG": 1.0, "MODERATE": 0.5, "WEAK": 0.0}
+
+
+def _raw_confidence_from_grades(pcs_answers: dict[str, dict[str, str]]) -> int:
+    """Compute raw confidence from 3-tier PCS grades.
+
+    Total ranges 0.0 to 5.0. Softened thresholds: confidence 5 allows
+    3 STRONG + 2 MODERATE (total=4.0), which is realistic for real-world analyses.
+    """
+    total = sum(
+        _GRADE_SCORES.get(a.get("answer", "WEAK"), 0.0)
+        for a in pcs_answers.values()
+        if isinstance(a, dict) and "answer" in a
+    )
+    if total >= 4.0:
         return 5
-    if no_count == 1:
+    if total >= 3.0:
         return 4
-    if no_count == 2:
+    if total >= 2.5:
         return 3
-    if no_count == 3:
+    if total >= 1.5:
         return 2
     return 1
 
@@ -144,12 +157,12 @@ def _risk_type_friction(risk_type: str, pcs_answers: dict[str, dict[str, str]]) 
     applied = default_friction
     note = f"{risk_type} -> friction {default_friction}"
 
-    if risk_type == "Cyclical/Macro" and pcs_answers["q3_precedent"]["answer"] == "Yes":
+    if risk_type == "Cyclical/Macro" and pcs_answers["q3_precedent_grounded"]["answer"] == "STRONG":
         applied = 0
-        note = f"{risk_type}, Q3=Yes -> friction 0"
-    elif risk_type == "Regulatory/Political" and pcs_answers["q2_regulatory"]["answer"] == "Yes":
+        note = f"{risk_type}, Q3=STRONG -> friction 0"
+    elif risk_type == "Regulatory/Political" and pcs_answers["q2_risk_bounded"]["answer"] in ("STRONG", "MODERATE"):
         applied = -1
-        note = f"{risk_type}, Q2=Yes -> friction -1"
+        note = f"{risk_type}, Q2>=MODERATE -> friction -1"
     elif risk_type == "Structural fragility (SPOF)":
         note = f"{risk_type} -> friction -1"
 
@@ -157,15 +170,15 @@ def _risk_type_friction(risk_type: str, pcs_answers: dict[str, dict[str, str]]) 
 
 
 def epistemic_outcome(base_probability: float, dominant_risk_type: str, pcs_answers: dict[str, dict[str, str]]) -> EpistemicOutcome:
-    no_count = sum(1 for check in pcs_answers.values() if check["answer"] == "No")
-    raw_confidence = _raw_confidence_from_no_count(no_count)
+    raw_confidence = _raw_confidence_from_grades(pcs_answers)
+    weak_count = sum(1 for check in pcs_answers.values() if isinstance(check, dict) and check.get("answer") == "WEAK")
     friction, friction_note = _risk_type_friction(dominant_risk_type, pcs_answers)
     adjusted_confidence = max(1, raw_confidence - abs(friction))
     multiplier = PCS_MULTIPLIERS[adjusted_confidence]
     effective_probability = round2(base_probability * multiplier)
-    binary_override = pcs_answers["q4_nonbinary"]["answer"] == "No" and adjusted_confidence <= 3
+    binary_override = pcs_answers["q4_downside_steelmanned"]["answer"] == "WEAK" and adjusted_confidence <= 3
     return EpistemicOutcome(
-        no_count=no_count,
+        no_count=weak_count,
         raw_confidence=raw_confidence,
         risk_type_friction=friction,
         friction_note=friction_note,

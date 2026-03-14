@@ -21,12 +21,15 @@ from .hardening import (
     ExceptionPanelResult,
     cagr_exception_panel,
     detect_probability_anchoring,
+    detect_thesis_break,
     score_evidence_quality,
 )
-from .pipeline import ScanArtifacts, run_scan
+from .pipeline import ScanArtifacts, rank_within_cluster, run_scan
 from .sector import check_sector_freshness
 
 logger = logging.getLogger(__name__)
+
+ATH_GATE_THRESHOLD = 60.0  # Codex: stock must be 60%+ off ATH to investigate
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +120,17 @@ def _extract_hardening_flags(
             status_override = "PENDING_REVIEW"
     else:
         flags["cagr_exception"] = None
+
+    # 4. Thesis break detection
+    thesis_invalidation = overlay_candidate.get("thesis_invalidation")
+    thesis_break = detect_thesis_break(thesis_invalidation)
+    flags["thesis_break"] = thesis_break
+    if thesis_break:
+        flag_type = thesis_break.get("flag")
+        if flag_type == "THESIS_BREAK_IMMINENT":
+            status_override = "FAIL"
+        elif flag_type == "THESIS_BREAK_PROBABILITY_ANCHORING":
+            status_override = "PENDING_REVIEW"
 
     return flags, status_override
 
@@ -232,6 +246,7 @@ def _write_manifest(
     *,
     started_at: str,
     clusters: dict[str, list[str]] | None = None,
+    cluster_rankings: dict[str, list[dict]] | None = None,
 ) -> None:
     """Write manifest.json for a scan."""
     completed_at = datetime.now(timezone.utc).isoformat()
@@ -277,6 +292,8 @@ def _write_manifest(
 
     if clusters is not None:
         manifest["clusters"] = clusters
+    if cluster_rankings is not None:
+        manifest["cluster_rankings"] = cluster_rankings
 
     scan_result.manifest_path.parent.mkdir(parents=True, exist_ok=True)
     scan_result.manifest_path.write_text(json.dumps(manifest, indent=2))
@@ -313,8 +330,81 @@ def auto_scan(
     started_at = datetime.now(timezone.utc).isoformat()
     results: dict[str, TickerResult] = {}
 
+    # Build FMP client for peer lookups
+    fmp_client: FmpClient | None = None
+    if config.fmp_api_key:
+        fmp_client = FmpClient(config.fmp_api_key, transport=fmp_transport)
+
     for ticker in tickers:
+        # Early ATH gate: reject tickers not 60%+ off ATH before any
+        # Gemini/Claude calls.  The cached_transport layer ensures FMP
+        # responses fetched here are reused by run_live_scan downstream.
+        if fmp_client is not None:
+            try:
+                raw = build_raw_candidate_from_fmp(ticker, fmp_client)
+                pct_off = raw.get("market_snapshot", {}).get("pct_off_ath", 0.0)
+                if pct_off < ATH_GATE_THRESHOLD:
+                    price = raw.get("market_snapshot", {}).get("current_price", 0.0)
+                    ath = raw.get("market_snapshot", {}).get("all_time_high", 0.0)
+                    gap = ATH_GATE_THRESHOLD - pct_off
+                    print(f"  [{ticker}] REJECTED: Broken Chart — {pct_off:.1f}% off ATH (minimum {ATH_GATE_THRESHOLD:.0f}%)")
+                    print(f"        Price: ${price:.2f} | ATH: ${ath:.2f} | Gap to threshold: {gap:.1f}%")
+                    results[ticker] = TickerResult(
+                        ticker=ticker,
+                        status="FAIL",
+                        error=f"ATH gate: {pct_off:.1f}% off ATH (minimum {ATH_GATE_THRESHOLD:.0f}%)",
+                    )
+                    continue
+            except Exception as exc:
+                print(f"  [{ticker}] ATH gate check failed, skipping: {exc}")
+                logger.warning("ATH gate check failed for %s: %s", ticker, exc)
+                results[ticker] = TickerResult(
+                    ticker=ticker,
+                    status="ERROR",
+                    error=f"ATH gate check failed: {exc}",
+                )
+                continue
+
         try:
+            # Fetch peer context for decision memo grounding
+            peer_context: list[dict] | None = None
+            if fmp_client is not None:
+                try:
+                    # Primary: FMP stock-peers endpoint
+                    try:
+                        peer_tickers = fmp_client.stock_peers(ticker)
+                    except Exception:
+                        peer_tickers = []
+
+                    # Fallback: same-sector screener if <2 peers
+                    if len(peer_tickers) < 2:
+                        try:
+                            profile = fmp_client.profile(ticker)
+                            sector = profile.get("sector", "")
+                            if sector:
+                                screener = fmp_client.stock_screener(
+                                    sector, exchange="", limit="10",
+                                )
+                                for s in screener:
+                                    sym = s.get("symbol")
+                                    if sym and sym != ticker and sym not in peer_tickers:
+                                        peer_tickers.append(sym)
+                                peer_tickers = peer_tickers[:5]
+                        except Exception:
+                            pass
+
+                    if peer_tickers:
+                        target_quote = fmp_client.quote(ticker)
+                        target_mkt_cap = float(target_quote.get("marketCap", 0) or 0)
+                        peer_context = fmp_client.peer_metrics(
+                            peer_tickers, target_mkt_cap=target_mkt_cap,
+                        )
+                    print(f"  [{ticker}] Peer lookup: {len(peer_tickers)} tickers, {len(peer_context or [])} with metrics")
+                    logger.info("Fetched %d peers for %s", len(peer_context or []), ticker)
+                except Exception as exc:
+                    print(f"  [{ticker}] Peer lookup failed: {exc}")
+                    logger.warning("Peer lookup failed for %s: %s", ticker, exc)
+
             auto_result = auto_analyze(
                 ticker,
                 config=config,
@@ -324,6 +414,7 @@ def auto_scan(
                 analyst_client=analyst_client,
                 validator_client=validator_client,
                 epistemic_client=epistemic_client,
+                peer_context=peer_context,
             )
             ticker_result = _process_single_ticker(
                 ticker, auto_result,
@@ -410,7 +501,7 @@ def sector_scan(
         try:
             raw = build_raw_candidate_from_fmp(symbol, fmp_client)
             pct_off = raw.get("market_snapshot", {}).get("pct_off_ath", 0.0)
-            if pct_off >= 60.0:
+            if pct_off >= ATH_GATE_THRESHOLD:
                 item["_raw_candidate"] = raw
                 item["_pct_off_ath"] = pct_off
                 survivors.append(item)
@@ -466,6 +557,53 @@ def sector_scan(
             ticker, ticker_result = future.result()
             results[ticker] = ticker_result
 
+    # Step 7: Within-cluster ranking
+    cluster_rankings: dict[str, list[dict]] = {}
+    for industry, cluster_tickers in clusters.items():
+        # Collect report data for ranking
+        cluster_candidates: list[dict] = []
+        for ct in cluster_tickers:
+            tr = results.get(ct)
+            if tr is None or tr.status == "ERROR":
+                continue
+            if tr.report_json_path and tr.report_json_path.exists():
+                try:
+                    report = json.loads(tr.report_json_path.read_text())
+                    # Use ranked or rejected candidates for ranking input
+                    ranked = report.get("ranked_candidates", [])
+                    rejected = report.get("rejected_at_analysis_detail_packets", [])
+                    for rc in ranked + rejected:
+                        rc["_ticker_result_status"] = tr.status
+                        cluster_candidates.append(rc)
+                except Exception:
+                    pass
+
+        if len(cluster_candidates) >= 2:
+            ranked_cluster = rank_within_cluster(cluster_candidates)
+            cluster_rankings[industry] = [
+                {
+                    "ticker": c.get("ticker"),
+                    "cluster_rank": c.get("peer_comparison", {}).get("cluster_rank"),
+                    "final_cluster_status": c.get("peer_comparison", {}).get("final_cluster_status"),
+                    "ranking_rationale": c.get("peer_comparison", {}).get("ranking_rationale"),
+                }
+                for c in ranked_cluster
+            ]
+            # Override status for ELIMINATED candidates
+            for c in ranked_cluster:
+                pc = c.get("peer_comparison", {})
+                if pc.get("final_cluster_status") == "ELIMINATED":
+                    ct = c.get("ticker")
+                    if ct in results and results[ct].status == "PASS":
+                        results[ct] = TickerResult(
+                            ticker=ct,
+                            status="FAIL",
+                            report_json_path=results[ct].report_json_path,
+                            report_markdown_path=results[ct].report_markdown_path,
+                            error="Eliminated in within-cluster ranking",
+                            hardening_flags=results[ct].hardening_flags,
+                        )
+
     manifest_path = out_dir / "manifest.json"
     scan_result = ScanResult(
         scan_id=scan_id,
@@ -475,5 +613,9 @@ def sector_scan(
         results=results,
         manifest_path=manifest_path,
     )
-    _write_manifest(scan_result, started_at=started_at, clusters=dict(clusters))
+    _write_manifest(
+        scan_result, started_at=started_at,
+        clusters=dict(clusters),
+        cluster_rankings=cluster_rankings if cluster_rankings else None,
+    )
     return scan_result

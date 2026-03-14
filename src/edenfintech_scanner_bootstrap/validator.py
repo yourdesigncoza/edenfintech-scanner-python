@@ -7,6 +7,7 @@ adversarial red-team questioning.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 from .llm_transport import default_anthropic_transport, parse_llm_json
@@ -230,6 +231,15 @@ class RedTeamValidatorClient:
             "  subjective disagreements — conservative vs aggressive assumptions, timing\n"
             "  estimates, risk weighting, editorial improvements. List concerns as objections.\n"
             "- APPROVE: No material issues found. Analysis is well-supported.\n\n"
+            "ADVERSARIAL COUNTER-THESIS (MANDATORY):\n"
+            "Before issuing your verdict, construct the strongest credible counter-thesis\n"
+            "to the analyst's bull case using the SAME evidence provided.\n\n"
+            "Then explicitly evaluate: does the original thesis successfully anticipate\n"
+            "and mitigate this counter-thesis?\n\n"
+            "CRITICAL: The existence of a counter-thesis does NOT warrant REJECT.\n"
+            "Only issue REJECT for fatal errors (mathematical impossibilities, internal\n"
+            "contradictions, missing critical data). A strong counter-thesis with a\n"
+            "strong original thesis warrants APPROVE_WITH_CONCERNS.\n\n"
             "Most real-world equity analyses will warrant APPROVE_WITH_CONCERNS. Use REJECT\n"
             "sparingly — only when the analysis cannot be defended.\n\n"
             "Return ONLY valid JSON matching the output schema. No markdown, no commentary."
@@ -311,18 +321,197 @@ class RedTeamValidatorClient:
         return result
 
 
+# ---------------------------------------------------------------------------
+# Pre-mortem validator for thesis invalidation (runs parallel to red-team)
+# ---------------------------------------------------------------------------
+
+THESIS_INVALIDATION_CATEGORIES = [
+    "single_point_failure",
+    "capital_structure",
+    "regulatory",
+    "tech_disruption",
+    "market_structure",
+]
+
+PREMORTEM_OUTPUT_SCHEMA: dict = {
+    "type": "object",
+    "required": ["thesis_invalidation"],
+    "additionalProperties": False,
+    "properties": {
+        "thesis_invalidation": {
+            "type": "object",
+            "required": ["conditions", "imminent_break_flag"],
+            "additionalProperties": False,
+            "properties": {
+                "conditions": {
+                    "type": "array",
+                    "minItems": 5,
+                    "maxItems": 5,
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "category", "risk_description",
+                            "early_warning_metric", "evidence_status",
+                            "rationale",
+                        ],
+                        "additionalProperties": False,
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "enum": THESIS_INVALIDATION_CATEGORIES,
+                            },
+                            "risk_description": {"type": "string"},
+                            "early_warning_metric": {"type": "string"},
+                            "evidence_status": {
+                                "type": "string",
+                                "enum": [
+                                    "no_current_evidence",
+                                    "weak_evidence",
+                                    "strong_evidence",
+                                ],
+                            },
+                            "rationale": {"type": "string"},
+                        },
+                    },
+                },
+                "imminent_break_flag": {"type": "boolean"},
+            },
+        },
+    },
+}
+
+
+class PreMortemValidatorClient:
+    """Client for thesis invalidation pre-mortem analysis.
+
+    Runs in parallel with RedTeamValidatorClient. Dedicated to identifying
+    structural thesis-breaking events without probability estimation.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        model: str = "claude-haiku-4-5-20251001",
+        transport: ValidatorTransport | None = None,
+    ) -> None:
+        self.api_key = api_key
+        self.model = model
+        self.transport = transport or self._default_transport
+
+    def _default_transport(self, request_payload: dict) -> dict:
+        return default_anthropic_transport(
+            request_payload,
+            api_key=self.api_key,
+            model=self.model,
+            max_tokens=4096,
+        )
+
+    def _build_system_prompt(self) -> str:
+        category_list = "\n".join(
+            f"  {i + 1}. {cat}" for i, cat in enumerate(THESIS_INVALIDATION_CATEGORIES)
+        )
+        return (
+            "You are a pre-mortem analyst specializing in identifying structural "
+            "thesis-breaking events for deep value turnaround investments.\n\n"
+            "PRE-MORTEM DIRECTIVE:\n"
+            "Assume it is 3 years from now and this investment has resulted in a "
+            "TOTAL LOSS OF CAPITAL. The business has not merely underperformed — "
+            "the thesis has been STRUCTURALLY INVALIDATED.\n\n"
+            "Write the narrative of exactly how this happened.\n\n"
+            "You MUST identify one thesis-breaking event for EACH of these 5 categories:\n"
+            f"{category_list}\n\n"
+            "For each category, provide:\n"
+            "- category: the exact enum value above\n"
+            "- risk_description: the specific structural break (NOT cyclical slowdown "
+            "or temporary underperformance)\n"
+            "- early_warning_metric: ONE specific, observable KPI or fact that would "
+            "signal this break is materializing\n"
+            "- evidence_status: assess based on CURRENT evidence available in the data:\n"
+            "  * no_current_evidence: theoretical risk only, nothing observable now\n"
+            "  * weak_evidence: early signals exist but inconclusive\n"
+            "  * strong_evidence: verifiable facts show this is actively occurring\n"
+            "- rationale: justify your evidence_status assessment with specific "
+            "references to the data provided\n\n"
+            "Set imminent_break_flag to true if ANY condition has strong_evidence.\n\n"
+            "CRITICAL RULES:\n"
+            "- Do NOT assign numerical probabilities or percentages to any risk.\n"
+            "- Do NOT use words like 'percent', 'probability', or 'likelihood' "
+            "followed by numbers.\n"
+            "- Focus on STRUCTURAL breaks (permanent capital impairment, business "
+            "model death) NOT cyclical risks (slow quarters, temporary headwinds).\n"
+            "- Define risks qualitatively and specify observable metrics.\n\n"
+            "Return ONLY valid JSON matching the output schema. No markdown, "
+            "no commentary."
+        )
+
+    def _build_user_prompt(
+        self,
+        overlay_candidate: dict,
+        raw_candidate: dict,
+    ) -> str:
+        """Build user prompt with same allowlist filtering as red-team validator."""
+        safe_overlay: dict = {}
+        for key in ("analysis_inputs", "screening_inputs", "epistemic_inputs",
+                     "ticker", "evidence_context", "field_provenance"):
+            if key in overlay_candidate:
+                safe_overlay[key] = overlay_candidate[key]
+
+        safe_raw: dict = {}
+        for key in ("ticker", "fmp_context", "market_snapshot", "industry"):
+            if key in raw_candidate:
+                safe_raw[key] = raw_candidate[key]
+
+        return "\n".join([
+            "ANALYST OVERLAY (analysis_inputs only, pipeline output excluded):",
+            json.dumps(safe_overlay, indent=2),
+            "",
+            "RAW FMP DATA:",
+            json.dumps(safe_raw, indent=2),
+        ])
+
+    def validate(
+        self,
+        overlay_candidate: dict,
+        raw_candidate: dict,
+    ) -> dict:
+        """Run pre-mortem thesis invalidation analysis.
+
+        Returns dict with thesis_invalidation key containing conditions
+        and imminent_break_flag.
+        """
+        request_payload = {
+            "system": self._build_system_prompt(),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": self._build_user_prompt(
+                        overlay_candidate, raw_candidate
+                    ),
+                }
+            ],
+            "output_schema": PREMORTEM_OUTPUT_SCHEMA,
+        }
+
+        response = self.transport(request_payload)
+        result = parse_llm_json(response, agent="premortem_validator")
+        return result
+
+
 def validate_overlay(
     overlay_candidate: dict,
     raw_candidate: dict,
     *,
     client: RedTeamValidatorClient | None = None,
+    premortem_client: PreMortemValidatorClient | None = None,
 ) -> dict:
-    """Top-level validation function: deterministic contradictions first, then LLM red-team.
+    """Top-level validation: contradictions + parallel red-team & pre-mortem.
 
-    Runs detect_contradictions() first (per research: deterministic before LLM),
-    then passes contradictions into the LLM validator context.
+    Runs detect_contradictions() first (deterministic), then runs the
+    red-team validator and pre-mortem validator in parallel.
 
-    Returns enriched result with verdict, questions, objections, contradictions keys.
+    Returns enriched result with verdict, questions, objections,
+    contradictions, and thesis_invalidation keys.
     """
     contradictions = detect_contradictions(overlay_candidate, raw_candidate)
 
@@ -332,4 +521,28 @@ def validate_overlay(
         config.require("anthropic_api_key")
         client = RedTeamValidatorClient(config.anthropic_api_key, model=config.analyst_model)
 
-    return client.validate(overlay_candidate, raw_candidate, contradictions)
+    if premortem_client is None:
+        from .config import load_config
+        config = load_config()
+        config.require("anthropic_api_key")
+        premortem_client = PreMortemValidatorClient(
+            config.anthropic_api_key, model=config.analyst_model
+        )
+
+    # Run both validators in parallel
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        redteam_future = executor.submit(
+            client.validate, overlay_candidate, raw_candidate, contradictions
+        )
+        premortem_future = executor.submit(
+            premortem_client.validate, overlay_candidate, raw_candidate
+        )
+        redteam_result = redteam_future.result()
+        premortem_result = premortem_future.result()
+
+    # Merge results: red-team verdict + pre-mortem thesis_invalidation
+    thesis_invalidation = premortem_result.get("thesis_invalidation")
+    if thesis_invalidation is not None:
+        redteam_result["thesis_invalidation"] = thesis_invalidation
+
+    return redteam_result

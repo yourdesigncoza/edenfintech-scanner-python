@@ -74,6 +74,10 @@ def run_live_scan(
     out_dir.mkdir(parents=True, exist_ok=True)
     written_paths: dict[str, Path] = {}
 
+    # Reset FMP cache stats so we count only this fetch batch
+    if hasattr(fmp_transport, "reset_stats"):
+        fmp_transport.reset_stats()
+
     print(f"  [{', '.join(tickers)}] FMP fetch ...", end=" ", flush=True)
     try:
         fmp_bundle = build_fmp_bundle_with_config(
@@ -84,7 +88,14 @@ def run_live_scan(
         fmp_path = out_dir / "fmp-raw.json"
         write_fmp_bundle(fmp_path, fmp_bundle)
         written_paths["fmp_raw"] = fmp_path
-        print("OK")
+
+        # Report cache hit/miss breakdown when available
+        fmp_stats = getattr(fmp_transport, "stats", None)
+        if fmp_stats:
+            hits, misses = fmp_stats["hits"], fmp_stats["misses"]
+            print(f"OK ({hits} cached, {misses} fresh)")
+        else:
+            print("OK")
     except Exception:
         print("FAILED")
         raise

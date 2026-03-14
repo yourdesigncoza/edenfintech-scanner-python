@@ -11,7 +11,7 @@ from .schemas import SchemaValidationError, validate_all_errors, validate_instan
 
 
 RAW_CHECK_ORDER = ["solvency", "dilution", "revenue_growth", "roic", "valuation"]
-RAW_PCS_ORDER = ["q1_operational", "q2_regulatory", "q3_precedent", "q4_nonbinary", "q5_macro"]
+RAW_PCS_ORDER = ["q1_operational_feasibility", "q2_risk_bounded", "q3_precedent_grounded", "q4_downside_steelmanned", "q5_catalyst_concrete"]
 PLACEHOLDER_TEXT = "__REQUIRED__"
 REQUIRED_PROVENANCE_FIELDS = [
     "screening_inputs.industry_understandable",
@@ -40,11 +40,17 @@ REQUIRED_PROVENANCE_FIELDS = [
     "analysis_inputs.worst_case_assumptions",
     "analysis_inputs.probability_inputs",
     "analysis_inputs.exception_candidate",
-    "epistemic_inputs.q1_operational",
-    "epistemic_inputs.q2_regulatory",
-    "epistemic_inputs.q3_precedent",
-    "epistemic_inputs.q4_nonbinary",
-    "epistemic_inputs.q5_macro",
+    "epistemic_inputs.q1_operational_feasibility",
+    "epistemic_inputs.q2_risk_bounded",
+    "epistemic_inputs.q3_precedent_grounded",
+    "epistemic_inputs.q4_downside_steelmanned",
+    "epistemic_inputs.q5_catalyst_concrete",
+    "thesis_invalidation.imminent_break_flag",
+    "thesis_invalidation.cond.single_point_failure",
+    "thesis_invalidation.cond.capital_structure",
+    "thesis_invalidation.cond.regulatory",
+    "thesis_invalidation.cond.tech_disruption",
+    "thesis_invalidation.cond.market_structure",
 ]
 FINAL_PROVENANCE_STATUSES = {"HUMAN_EDITED", "HUMAN_CONFIRMED", "LLM_CONFIRMED", "LLM_EDITED"}
 DRAFT_PROVENANCE_STATUSES = {"MACHINE_DRAFT", "LLM_DRAFT"}
@@ -672,6 +678,8 @@ def apply_structured_analysis(raw_bundle: dict, structured_payload: dict) -> dic
             merged_candidate["analysis_inputs"] = deepcopy(overlay["analysis_inputs"])
         if "epistemic_inputs" in overlay:
             merged_candidate["epistemic_inputs"] = deepcopy(overlay["epistemic_inputs"])
+        if "thesis_invalidation" in overlay:
+            merged_candidate["thesis_invalidation"] = deepcopy(overlay["thesis_invalidation"])
         merged_candidates.append(merged_candidate)
 
     if missing:

@@ -1,5 +1,7 @@
 # Start Here: Codex Extrapolation of Kyler's System
 
+Holdings : https://datawrapper.dwcdn.net/EH4wr/80/
+
 This framework is a Codex-built synthesis of the DeepValue wiki (articles + chats + process guides) as of **March 10, 2026**.
 
 It keeps Kyler's core DNA:

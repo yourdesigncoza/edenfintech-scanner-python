@@ -19,8 +19,10 @@ DEFAULT_TTLS: dict[str, int] = {
     "income-statement": 7_776_000,       # 90 days
     "cash-flow-statement": 7_776_000,    # 90 days
     "key-metrics": 604_800,             # 7 days
+    "key-metrics-ttm": 604_800,         # 7 days
     "enterprise-values": 604_800,       # 7 days
     "ratios": 604_800,                  # 7 days
+    # batch-quote removed: now uses standard "quote" endpoint with comma-separated symbols
     "stock-screener": 604_800,          # 7 days
     "stock-peers": 2_592_000,           # 30 days
 }
@@ -219,7 +221,13 @@ def cached_transport(
     *,
     fresh: bool = False,
 ) -> FmpTransport:
-    """Wrap an FmpTransport with caching. Returns a new FmpTransport callable."""
+    """Wrap an FmpTransport with caching. Returns a new FmpTransport callable.
+
+    The returned callable has a ``stats`` attribute (dict) tracking
+    ``"hits"`` and ``"misses"`` counts, and a ``reset_stats()`` method.
+    """
+
+    stats: dict[str, int] = {"hits": 0, "misses": 0}
 
     def _transport(endpoint: str, params: dict[str, str]) -> list[dict] | dict:
         ticker = params.get("symbol", "UNKNOWN")
@@ -227,10 +235,20 @@ def cached_transport(
         if not fresh:
             cached = cache_store.get(endpoint, ticker)
             if cached is not None:
+                stats["hits"] += 1
                 return cached
 
+        stats["misses"] += 1
         data = inner_transport(endpoint, params)
         cache_store.put(endpoint, ticker, data)
         return data
+
+    _transport.stats = stats  # type: ignore[attr-defined]
+
+    def _reset_stats() -> None:
+        stats["hits"] = 0
+        stats["misses"] = 0
+
+    _transport.reset_stats = _reset_stats  # type: ignore[attr-defined]
 
     return _transport

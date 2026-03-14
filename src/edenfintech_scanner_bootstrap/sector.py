@@ -7,6 +7,7 @@ and stores validated JSON at ``data/sectors/<slug>/knowledge.json``.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from datetime import datetime
@@ -17,20 +18,25 @@ from .config import AppConfig, discover_project_root, load_config
 from .gemini import GeminiClient, _extract_response_text
 from .schemas import validate_instance
 
+logger = logging.getLogger(__name__)
+
 STALENESS_DAYS = 180
-AUTO_STALENESS_DAYS = 7
+AUTO_STALENESS_DAYS = 60
 SECTOR_DATA_DIR = "data/sectors"
 REGISTRY_FILENAME = "registry.json"
 
 KNOWLEDGE_CATEGORIES = [
-    "key_metrics",
-    "valuation_approach",
+    "sector_economics",
+    "sector_lifecycle",
+    "margin_dynamics",
+    "capital_allocation",
+    "peer_landscape",
+    "valuation_baseline",
+    "competitive_dynamics",
+    "turnaround_playbook",
     "regulatory_landscape",
-    "historical_precedents",
-    "moat_sources",
+    "cagr_achievability",
     "kill_factors",
-    "fcf_margin_ranges",
-    "typical_multiples",
 ]
 
 
@@ -79,46 +85,89 @@ def _update_registry(
 def _sector_query_prompt(sub_sector: str, category: str) -> str:
     """Return the Gemini prompt for a given sub-sector and knowledge category."""
     templates = {
-        "key_metrics": (
-            f"For the {sub_sector} sub-sector, identify the key financial metrics "
-            "investors use to evaluate companies. Include margins, growth rates, "
-            "leverage ratios, and efficiency metrics specific to this industry."
+        "sector_economics": (
+            f"For the {sub_sector} sub-sector, describe the core business model "
+            "and unit economics. How do companies make money — volume vs price, "
+            "recurring vs project-based revenue, fixed vs variable cost structure? "
+            "Include key operating metrics (ROIC, ROCE, working capital needs, "
+            "cash conversion cycle) and what 'good' looks like for each."
         ),
-        "valuation_approach": (
-            f"For the {sub_sector} sub-sector, identify what valuation methods and "
-            "typical multiples are used for companies in this industry. Include "
-            "DCF assumptions, comparable transaction multiples, and sector-specific "
-            "valuation frameworks."
+        "sector_lifecycle": (
+            f"For the {sub_sector} sub-sector, is this industry in secular growth, "
+            "secular decline, or cyclical mean-reversion? What drives the cycle — "
+            "what does trough look like vs peak? What is the typical cycle duration "
+            "from trough to peak? What leading indicators signal where the sector "
+            "currently sits in its cycle?"
         ),
-        "regulatory_landscape": (
-            f"For the {sub_sector} sub-sector, describe the current regulatory "
-            "environment. Include key regulations, compliance requirements, "
-            "pending legislation, and regulatory risks."
+        "margin_dynamics": (
+            f"For the {sub_sector} sub-sector, identify typical free cash flow "
+            "margin ranges: best-in-class, average, and below-average with specific "
+            "company examples. More importantly, HOW do companies in this sector "
+            "expand margins — through cost-cutting, operating leverage, mix shift "
+            "to higher-margin products/services, pricing power, or automation? "
+            "What is the typical margin expansion path from trough to normalized?"
         ),
-        "historical_precedents": (
-            f"For the {sub_sector} sub-sector, identify notable turnaround, recovery, "
-            "or value-destruction precedents. Include specific companies, timelines, "
-            "and outcomes."
+        "capital_allocation": (
+            f"For the {sub_sector} sub-sector, describe typical capital allocation "
+            "patterns. What is normal maintenance vs growth capex intensity? What "
+            "are standard leverage ratios (Net Debt/EBITDA) for healthy vs stressed "
+            "companies? What are typical dividend payout ratios and buyback behaviors? "
+            "How does capital deployment differ between leaders and laggards?"
         ),
-        "moat_sources": (
-            f"For the {sub_sector} sub-sector, identify the primary sources of "
-            "competitive advantage. Include brand power, network effects, switching "
-            "costs, scale economies, and intangible assets."
+        "peer_landscape": (
+            f"For the {sub_sector} sub-sector, describe the competitive landscape. "
+            "Who are the key players and what are approximate market shares? Is "
+            "the market fragmented or consolidated (oligopoly)? What M&A and "
+            "consolidation dynamics are at play? How do new entrants typically "
+            "gain share, and what barriers protect incumbents?"
         ),
-        "kill_factors": (
-            f"For the {sub_sector} sub-sector, identify factors that typically cause "
-            "permanent value destruction. Include regulatory risks, technology disruption, "
-            "demand destruction, and structural decline indicators."
-        ),
-        "fcf_margin_ranges": (
-            f"For the {sub_sector} sub-sector, identify typical free cash flow margin "
-            "ranges. Include best-in-class, average, and below-average ranges with "
-            "specific company examples where possible."
-        ),
-        "typical_multiples": (
+        "valuation_baseline": (
             f"For the {sub_sector} sub-sector, identify typical valuation multiples "
             "including P/FCF, EV/EBITDA, and P/S ratios. Differentiate between "
-            "premium and average performers."
+            "premium and average performers. What specifically drives a premium "
+            "multiple in this sector — growth rate, contract visibility, lower "
+            "leverage, recurring revenue, or regulatory protection? Include "
+            "DCF assumptions and comparable transaction multiples from recent M&A."
+        ),
+        "competitive_dynamics": (
+            f"For the {sub_sector} sub-sector, evaluate which of these six moat "
+            "types are viable and prevalent: (1) low-cost advantage, (2) switching "
+            "costs, (3) regulatory barriers, (4) brand power, (5) capital barriers "
+            "to entry, (6) network effects. For each applicable moat type, how "
+            "durable is it and how easily can it be impaired? Include specific "
+            "company examples."
+        ),
+        "turnaround_playbook": (
+            f"For the {sub_sector} sub-sector, describe the typical turnaround "
+            "playbook for struggling companies. What are the common problem/fix "
+            "maps — what breaks and what specific actions fix it? Include historical "
+            "turnaround case studies with timelines and outcomes. What catalyst "
+            "types (management change, spin-off, deleveraging, cost restructuring) "
+            "have historically worked in this sector?"
+        ),
+        "regulatory_landscape": (
+            f"For the {sub_sector} sub-sector, describe the regulatory environment "
+            "and macro sensitivities. Include key regulations, compliance costs, "
+            "pending legislation, and how regulatory changes can act as either "
+            "catalysts (clearance, deregulation) or kill factors (bans, price "
+            "controls). How sensitive is this sector to interest rates, commodity "
+            "inputs, or consumer spending cycles?"
+        ),
+        "cagr_achievability": (
+            f"For the {sub_sector} sub-sector, is a 30%+ compound annual return "
+            "historically achievable through a turnaround or deep-value investment? "
+            "What specific combination of factors drives multi-bagger returns — "
+            "earnings growth, multiple expansion, margin reversion, or deleveraging? "
+            "Include specific examples of companies that delivered 30%+ CAGR from "
+            "distressed levels and what drove the returns."
+        ),
+        "kill_factors": (
+            f"For the {sub_sector} sub-sector, identify factors that cause permanent "
+            "value destruction — not cyclical downturns but structural, irreversible "
+            "threats. Include technology disruption and obsolescence, permanent "
+            "demand destruction, regulatory wipeouts, and secular decline indicators. "
+            "What distinguishes a temporary setback from a permanent impairment "
+            "in this sector?"
         ),
     }
     return templates[category]
@@ -148,43 +197,99 @@ def _sector_response_schema(category: str) -> dict:
     }
 
 
+_MAX_CATEGORY_RETRIES = 2
+
+
+def _fetch_category(
+    sub_sector: str,
+    category: str,
+    client: GeminiClient,
+) -> list[dict]:
+    """Fetch a single knowledge category from Gemini with retry.
+
+    Returns the list of evidence items, or raises after exhausting retries.
+    """
+    prompt = _sector_query_prompt(sub_sector, category)
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}],
+            }
+        ],
+        "tools": [{"googleSearch": {}}, {"urlContext": {}}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseJsonSchema": _sector_response_schema(category),
+        },
+    }
+
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_CATEGORY_RETRIES + 1):
+        try:
+            response = client.transport(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{client.model}:generateContent",
+                {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": client.api_key,
+                },
+                payload,
+            )
+            response_text = _extract_response_text(response)
+            parsed = json.loads(response_text)
+            return parsed["items"]
+        except Exception as exc:
+            last_exc = exc
+            if attempt < _MAX_CATEGORY_RETRIES:
+                wait = 2 ** (attempt + 1)
+                logger.warning(
+                    "Gemini query failed for %s/%s (attempt %d/%d): %s — retrying in %ds",
+                    sub_sector, category, attempt + 1,
+                    _MAX_CATEGORY_RETRIES + 1, exc, wait,
+                )
+                time.sleep(wait)
+
+    raise RuntimeError(
+        f"Gemini query failed for {sub_sector}/{category} after "
+        f"{_MAX_CATEGORY_RETRIES + 1} attempts: {last_exc}"
+    ) from last_exc
+
+
 def _hydrate_sub_sector(
     sub_sector: str,
     sector_name: str,
     client: GeminiClient,
 ) -> dict:
-    """Run 8 Gemini queries for one sub-sector, return a sub_sector_knowledge object."""
+    """Run Gemini queries for one sub-sector, return a sub_sector_knowledge object.
+
+    Individual category failures are retried. If a category still fails after
+    retries, it is skipped with a warning and a placeholder is stored so the
+    remaining categories are not lost.
+    """
     result: dict = {"sub_sector_name": sub_sector}
+    failed: list[str] = []
 
     for i, category in enumerate(KNOWLEDGE_CATEGORIES):
         if i > 0:
             time.sleep(2)
 
-        prompt = _sector_query_prompt(sub_sector, category)
-        payload = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": prompt}],
-                }
-            ],
-            "tools": [{"googleSearch": {}}, {"urlContext": {}}],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "responseJsonSchema": _sector_response_schema(category),
-            },
-        }
-        response = client.transport(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{client.model}:generateContent",
-            {
-                "Content-Type": "application/json",
-                "x-goog-api-key": client.api_key,
-            },
-            payload,
+        try:
+            result[category] = _fetch_category(sub_sector, category, client)
+        except Exception as exc:
+            logger.error("Skipping %s/%s: %s", sub_sector, category, exc)
+            result[category] = [{
+                "claim": f"Hydration failed: {exc}",
+                "source_title": "ERROR",
+                "source_url": "N/A",
+                "confidence_note": "This category failed during hydration and should be re-hydrated.",
+            }]
+            failed.append(category)
+
+    if failed:
+        logger.warning(
+            "%d/%d categories failed for %s: %s",
+            len(failed), len(KNOWLEDGE_CATEGORIES), sub_sector, ", ".join(failed),
         )
-        response_text = _extract_response_text(response)
-        parsed = json.loads(response_text)
-        result[category] = parsed["items"]
 
     return result
 

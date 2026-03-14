@@ -29,22 +29,49 @@
       "type": "object",
       "required": [
         "sub_sector_name",
-        "key_metrics",
-        "valuation_approach",
+        "sector_economics",
+        "sector_lifecycle",
+        "margin_dynamics",
+        "capital_allocation",
+        "peer_landscape",
+        "valuation_baseline",
+        "competitive_dynamics",
+        "turnaround_playbook",
         "regulatory_landscape",
-        "historical_precedents",
-        "moat_sources",
-        "kill_factors",
-        "fcf_margin_ranges",
-        "typical_multiples"
+        "cagr_achievability",
+        "kill_factors"
       ],
       "properties": {
         "sub_sector_name": { "type": "string", "minLength": 1 },
-        "key_metrics": {
+        "sector_economics": {
           "type": "array", "minItems": 1,
           "items": { "$ref": "#/definitions/evidence_item" }
         },
-        "valuation_approach": {
+        "sector_lifecycle": {
+          "type": "array", "minItems": 1,
+          "items": { "$ref": "#/definitions/evidence_item" }
+        },
+        "margin_dynamics": {
+          "type": "array", "minItems": 1,
+          "items": { "$ref": "#/definitions/evidence_item" }
+        },
+        "capital_allocation": {
+          "type": "array", "minItems": 1,
+          "items": { "$ref": "#/definitions/evidence_item" }
+        },
+        "peer_landscape": {
+          "type": "array", "minItems": 1,
+          "items": { "$ref": "#/definitions/evidence_item" }
+        },
+        "valuation_baseline": {
+          "type": "array", "minItems": 1,
+          "items": { "$ref": "#/definitions/evidence_item" }
+        },
+        "competitive_dynamics": {
+          "type": "array", "minItems": 1,
+          "items": { "$ref": "#/definitions/evidence_item" }
+        },
+        "turnaround_playbook": {
           "type": "array", "minItems": 1,
           "items": { "$ref": "#/definitions/evidence_item" }
         },
@@ -52,23 +79,11 @@
           "type": "array", "minItems": 1,
           "items": { "$ref": "#/definitions/evidence_item" }
         },
-        "historical_precedents": {
-          "type": "array", "minItems": 1,
-          "items": { "$ref": "#/definitions/evidence_item" }
-        },
-        "moat_sources": {
+        "cagr_achievability": {
           "type": "array", "minItems": 1,
           "items": { "$ref": "#/definitions/evidence_item" }
         },
         "kill_factors": {
-          "type": "array", "minItems": 1,
-          "items": { "$ref": "#/definitions/evidence_item" }
-        },
-        "fcf_margin_ranges": {
-          "type": "array", "minItems": 1,
-          "items": { "$ref": "#/definitions/evidence_item" }
-        },
-        "typical_multiples": {
           "type": "array", "minItems": 1,
           "items": { "$ref": "#/definitions/evidence_item" }
         }

@@ -106,7 +106,7 @@
       "properties": {
         "answer": {
           "type": "string",
-          "enum": ["Yes", "No"]
+          "enum": ["STRONG", "MODERATE", "WEAK"]
         },
         "justification": {
           "type": "string",
@@ -389,6 +389,37 @@
         }
       }
     },
+    "thesis_invalidation_condition": {
+      "type": "object",
+      "required": ["category", "risk_description", "early_warning_metric", "evidence_status", "rationale"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": ["single_point_failure", "capital_structure", "regulatory", "tech_disruption", "market_structure"]
+        },
+        "risk_description": { "type": "string", "minLength": 1 },
+        "early_warning_metric": { "type": "string", "minLength": 1 },
+        "evidence_status": {
+          "type": "string",
+          "enum": ["no_current_evidence", "weak_evidence", "strong_evidence"]
+        },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "thesis_invalidation": {
+      "type": "object",
+      "required": ["conditions", "imminent_break_flag"],
+      "additionalProperties": false,
+      "properties": {
+        "conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/thesis_invalidation_condition" }
+        },
+        "imminent_break_flag": { "type": "boolean" }
+      }
+    },
     "structured_candidate": {
       "type": "object",
       "required": [
@@ -451,18 +482,61 @@
         "epistemic_inputs": {
           "type": "object",
           "required": [
-            "q1_operational",
-            "q2_regulatory",
-            "q3_precedent",
-            "q4_nonbinary",
-            "q5_macro"
+            "q1_operational_feasibility",
+            "q2_risk_bounded",
+            "q3_precedent_grounded",
+            "q4_downside_steelmanned",
+            "q5_catalyst_concrete"
           ],
           "properties": {
-            "q1_operational": { "$ref": "#/definitions/pcs_check" },
-            "q2_regulatory": { "$ref": "#/definitions/pcs_check" },
-            "q3_precedent": { "$ref": "#/definitions/pcs_check" },
-            "q4_nonbinary": { "$ref": "#/definitions/pcs_check" },
-            "q5_macro": { "$ref": "#/definitions/pcs_check" }
+            "q1_operational_feasibility": { "$ref": "#/definitions/pcs_check" },
+            "q2_risk_bounded": { "$ref": "#/definitions/pcs_check" },
+            "q3_precedent_grounded": { "$ref": "#/definitions/pcs_check" },
+            "q4_downside_steelmanned": { "$ref": "#/definitions/pcs_check" },
+            "q5_catalyst_concrete": { "$ref": "#/definitions/pcs_check" }
+          }
+        },
+        "thesis_invalidation": {
+          "$ref": "#/definitions/thesis_invalidation"
+        },
+        "peer_comparison": {
+          "type": "object",
+          "properties": {
+            "peers_evaluated": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "cluster_rank": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "cluster_score": {
+              "type": "number"
+            },
+            "final_cluster_status": {
+              "type": "string",
+              "enum": ["CLEAR_WINNER", "CONDITIONAL_WINNER", "LOWER_PRIORITY", "ELIMINATED"]
+            },
+            "ranking_rationale": {
+              "type": "string"
+            },
+            "peer_metrics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "ticker": { "type": "string" },
+                  "latest_revenue_b": { "type": ["number", "null"] },
+                  "revenue_cagr_3yr": { "type": ["number", "null"] },
+                  "latest_fcf_margin_pct": { "type": ["number", "null"] },
+                  "margin_trend": { "type": ["string", "null"] },
+                  "roic_pct": { "type": ["number", "null"] },
+                  "debt_to_equity": { "type": ["number", "null"] },
+                  "pct_off_ath": { "type": ["number", "null"] },
+                  "shares_growth_3yr_pct": { "type": ["number", "null"] }
+                }
+              }
+            }
           }
         }
       }
