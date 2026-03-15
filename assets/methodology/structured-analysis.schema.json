@@ -264,6 +264,18 @@
         },
         "stretch_case_assumptions": { "$ref": "#/definitions/stretch_case_assumptions" },
         "moat_assessment": { "type": "string" },
+        "incentive_alignment": {
+          "type": "object",
+          "required": ["pay_metric", "gameable_risk", "evidence_basis"],
+          "properties": {
+            "pay_metric": { "type": "string" },
+            "gameable_risk": {
+              "type": "string",
+              "enum": ["LOW", "MODERATE", "HIGH", "UNKNOWN"]
+            },
+            "evidence_basis": { "type": "string" }
+          }
+        },
         "thesis_summary": { "type": "string" },
         "catalysts": {
           "type": "array",

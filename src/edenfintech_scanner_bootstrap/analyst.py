@@ -45,7 +45,7 @@ _FUNDAMENTALS_ANALYSIS_FIELDS = (
 _QUALITATIVE_ANALYSIS_FIELDS = (
     "catalyst_classification", "catalyst_stack", "catalysts",
     "dominant_risk_type", "key_risks", "invalidation_triggers",
-    "moat_assessment", "thesis_summary", "structural_diagnosis",
+    "moat_assessment", "incentive_alignment", "thesis_summary", "structural_diagnosis",
     "decision_memo", "issues_and_fixes",
     "human_judgment_flags", "exception_candidate", "final_cluster_status",
 )
@@ -568,7 +568,7 @@ def _build_qualitative_system_prompt(sector_knowledge: dict | None = None) -> st
         + _METHODOLOGY_RULES
         + "\n\nSCOPE: Produce qualitative analysis_inputs "
         "(catalyst_classification, catalyst_stack, catalysts, dominant_risk_type, key_risks, "
-        "invalidation_triggers, moat_assessment, thesis_summary, structural_diagnosis, "
+        "invalidation_triggers, moat_assessment, incentive_alignment, thesis_summary, structural_diagnosis, "
         "decision_memo, issues_and_fixes, human_judgment_flags, exception_candidate, "
         "final_cluster_status), epistemic_inputs, and field_provenance for these fields ONLY.\n"
         "Do NOT produce screening_inputs or quantitative fields.\n"
