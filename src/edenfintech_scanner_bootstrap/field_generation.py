@@ -80,16 +80,32 @@ def _screening_inputs(raw_candidate: dict) -> tuple[dict, list[dict]]:
     shares = _share_history(raw_candidate)
     research_text = " ".join(_claims(raw_candidate, "research_notes") + _claims(raw_candidate, "risk_evidence")).lower()
 
+    trailing = raw_candidate.get("trailing_ratios", {})
+    interest_cov = trailing.get("interest_coverage")
+    current_ratio = trailing.get("current_ratio")
+    debt_eq = trailing.get("debt_to_equity")
+    roic = trailing.get("roic_pct")
+    sbc_pct = trailing.get("sbc_pct_of_revenue")
+
     industry_understandable = raw_candidate.get("industry") not in {None, "", "Unknown Industry"}
     industry_in_secular_decline = any(token in research_text for token in ["secular decline", "shrinking market", "terminal decline"])
     double_plus_potential = pct_off_ath >= 60.0
 
-    if isinstance(latest_fcf, (int, float)) and latest_fcf > 0:
+    # Solvency: threshold-based using trailing ratios
+    if (isinstance(interest_cov, (int, float)) and interest_cov < 1.0
+            and (not isinstance(current_ratio, (int, float)) or current_ratio < 1.0 or debt_eq is None)):
+        solvency_verdict = "FAIL"
+        solvency_note = (f"Interest coverage {interest_cov}, current ratio {current_ratio}, "
+                         f"debt/equity {debt_eq} — deterministic solvency fail.")
+    elif (isinstance(interest_cov, (int, float)) and interest_cov >= 2.0
+            and isinstance(current_ratio, (int, float)) and current_ratio >= 1.0):
         solvency_verdict = "PASS"
-        solvency_note = f"Latest FCF margin is {latest_fcf}%, which supports a provisional solvency pass."
+        solvency_note = (f"Interest coverage {interest_cov}, current ratio {current_ratio} — "
+                         f"deterministic solvency pass.")
     else:
         solvency_verdict = "BORDERLINE_PASS"
-        solvency_note = "Raw bundle lacks strong positive FCF support; solvency needs human confirmation."
+        solvency_note = (f"Interest coverage {interest_cov}, current ratio {current_ratio}, "
+                         f"debt/equity {debt_eq} — borderline, needs LLM review.")
 
     if shares:
         dilution_pct = ((max(shares) - min(shares)) / min(shares)) * 100 if min(shares) > 0 else 0.0
@@ -104,6 +120,13 @@ def _screening_inputs(raw_candidate: dict) -> tuple[dict, list[dict]]:
         dilution_verdict = "BORDERLINE_PASS"
         dilution_note = "No usable share history was found in the raw bundle."
 
+    # SBC override: FAIL if SBC > 5% of revenue AND shares are growing
+    if (dilution_verdict != "FAIL"
+            and isinstance(sbc_pct, (int, float)) and sbc_pct > 5.0
+            and shares and max(shares) > min(shares)):
+        dilution_verdict = "FAIL"
+        dilution_note += f" SBC is {round(sbc_pct, 1)}% of revenue with share growth — deterministic fail."
+
     if isinstance(latest_revenue, (int, float)) and isinstance(trough_revenue, (int, float)):
         revenue_verdict = "PASS" if latest_revenue >= trough_revenue else "BORDERLINE_PASS"
         revenue_note = f"Latest revenue {latest_revenue}b versus trough revenue {trough_revenue}b."
@@ -111,8 +134,19 @@ def _screening_inputs(raw_candidate: dict) -> tuple[dict, list[dict]]:
         revenue_verdict = "BORDERLINE_PASS"
         revenue_note = "Revenue history is incomplete in the raw bundle."
 
-    roic_verdict = "BORDERLINE_PASS"
-    roic_note = "No direct ROIC series exists in the fetched raw bundle; treat this as a machine draft requiring review."
+    if isinstance(roic, (int, float)):
+        if roic < 6.0:
+            roic_verdict = "FAIL"
+            roic_note = f"ROIC {roic}% is below the 6% codex floor."
+        elif roic < 10.0:
+            roic_verdict = "BORDERLINE_PASS"
+            roic_note = f"ROIC {roic}% is between 6-10% — acceptable but not strong."
+        else:
+            roic_verdict = "PASS"
+            roic_note = f"ROIC {roic}% exceeds 10% threshold."
+    else:
+        roic_verdict = "BORDERLINE_PASS"
+        roic_note = "ROIC not computable from available data; needs LLM review."
 
     if pct_off_ath >= 70.0:
         valuation_verdict = "PASS"
@@ -150,13 +184,13 @@ def _screening_inputs(raw_candidate: dict) -> tuple[dict, list[dict]]:
         ),
         _field_provenance(
             "screening_inputs.solvency",
-            "Solvency draft is anchored to latest free cash flow margin.",
-            [_evidence_ref("fmp_derived", "fmp_context.derived.latest_fcf_margin_pct", str(latest_fcf))],
+            "Solvency draft uses interest coverage, current ratio, and debt/equity from trailing ratios.",
+            [_evidence_ref("fmp_trailing_ratios", "trailing_ratios", f"interest_cov={interest_cov}, current_ratio={current_ratio}, d/e={debt_eq}")],
         ),
         _field_provenance(
             "screening_inputs.dilution",
-            "Dilution draft is anchored to weighted average diluted share history.",
-            [_evidence_ref("fmp_income", "fmp_context.annual_income_statements", f"{len(shares)} share observations")],
+            "Dilution draft uses share growth and SBC/revenue ratio from trailing ratios.",
+            [_evidence_ref("fmp_income", "fmp_context.annual_income_statements", f"{len(shares)} share observations, sbc_pct={sbc_pct}")],
         ),
         _field_provenance(
             "screening_inputs.revenue_growth",
@@ -165,8 +199,8 @@ def _screening_inputs(raw_candidate: dict) -> tuple[dict, list[dict]]:
         ),
         _field_provenance(
             "screening_inputs.roic",
-            "ROIC remains a machine draft because the raw bundle does not include a direct ROIC series.",
-            [_evidence_ref("fmp_derived", "fmp_context.derived", "No ROIC field available")],
+            "ROIC draft uses computed ROIC from trailing ratios with 6%/10% thresholds.",
+            [_evidence_ref("fmp_trailing_ratios", "trailing_ratios.roic_pct", str(roic))],
         ),
         _field_provenance(
             "screening_inputs.valuation",
