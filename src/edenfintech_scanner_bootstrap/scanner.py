@@ -579,6 +579,7 @@ def sector_scan(
 
     def _analyze_ticker(ticker: str) -> tuple[str, TickerResult]:
         try:
+            peer_context = _build_peer_context(ticker, fmp_client) if fmp_client else None
             auto_result = auto_analyze(
                 ticker,
                 config=config,
@@ -588,6 +589,7 @@ def sector_scan(
                 analyst_client=analyst_client,
                 validator_client=validator_client,
                 epistemic_client=epistemic_client,
+                peer_context=peer_context,
             )
             ticker_result = _process_single_ticker(
                 ticker, auto_result,

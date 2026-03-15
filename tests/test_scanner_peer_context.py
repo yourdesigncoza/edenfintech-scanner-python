@@ -1,8 +1,9 @@
-"""Tests for _build_peer_context helper in scanner module."""
+"""Tests for _build_peer_context helper and sector_scan peer_context wiring."""
 import unittest
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from edenfintech_scanner_bootstrap.scanner import _build_peer_context
+from edenfintech_scanner_bootstrap.scanner import _build_peer_context, TickerResult
 
 
 class TestBuildPeerContext(unittest.TestCase):
@@ -100,6 +101,60 @@ class TestBuildPeerContext(unittest.TestCase):
         client.profile.side_effect = Exception("fail")
         result = _build_peer_context("OMI", client)
         self.assertIsNone(result)
+
+
+class TestSectorScanPeerContext(unittest.TestCase):
+    """Verify sector_scan passes peer_context to auto_analyze."""
+
+    @patch("edenfintech_scanner_bootstrap.scanner.auto_analyze")
+    @patch("edenfintech_scanner_bootstrap.scanner.build_raw_candidate_from_fmp")
+    @patch("edenfintech_scanner_bootstrap.scanner._build_peer_context")
+    @patch("edenfintech_scanner_bootstrap.scanner.ensure_sector_knowledge")
+    def test_sector_scan_passes_peer_context(
+        self, mock_ensure, mock_build_peer, mock_build_raw, mock_auto_analyze
+    ):
+        """sector_scan must pass peer_context from _build_peer_context to auto_analyze."""
+        fake_peers = [{"ticker": "MCK", "latest_revenue_b": 250.0}]
+        mock_build_peer.return_value = fake_peers
+        mock_build_raw.return_value = {
+            "market_snapshot": {"pct_off_ath": 75.0, "current_price": 10.0, "all_time_high": 40.0},
+        }
+        mock_auto_analyze.return_value = MagicMock(
+            ticker="OMI",
+            status="completed",
+            analysis={"screening": {"passed": True}},
+            raw_bundle={},
+            structured_analysis={},
+        )
+
+        # Mock FmpClient
+        mock_fmp = MagicMock()
+        mock_fmp.stock_screener.return_value = [{"symbol": "OMI", "industry": "Medical - Distribution"}]
+
+        config = MagicMock()
+        config.fmp_api_key = "test-key"
+
+        from edenfintech_scanner_bootstrap.scanner import sector_scan
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("edenfintech_scanner_bootstrap.scanner._process_single_ticker") as mock_process:
+                mock_process.return_value = TickerResult(
+                    ticker="OMI", status="PASS",
+                    report_json_path=None, report_markdown_path=None,
+                )
+                sector_scan(
+                    "Healthcare",
+                    config=config,
+                    out_dir=Path(tmpdir),
+                    fmp_client=mock_fmp,
+                    max_workers=1,
+                )
+
+        # Assert _build_peer_context was called for each ticker
+        mock_build_peer.assert_called_once_with("OMI", mock_fmp)
+        # Assert auto_analyze received peer_context
+        auto_call_kwargs = mock_auto_analyze.call_args[1]
+        self.assertEqual(auto_call_kwargs["peer_context"], fake_peers)
 
 
 if __name__ == "__main__":
