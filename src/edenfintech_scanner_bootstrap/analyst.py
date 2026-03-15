@@ -498,7 +498,13 @@ def _build_fundamentals_system_prompt(sector_knowledge: dict | None = None) -> s
         "- worst_case_assumptions.tbv_crosscheck: MUST be a string estimating tangible book value "
         "floor or noting it is not applicable with reasoning. Never return {}.\n"
         "- All three case assumptions (worst/base/stretch) must have populated numeric estimates, "
-        "not empty objects."
+        "not empty objects.\n"
+        "- worst_case_assumptions.shares_m: If the company has interest coverage < 1.5 or negative "
+        "stockholders' equity, model a plausible equity issuance at distressed pricing. Use the "
+        "post-dilution share count. Describe the dilution scenario in trough_path.\n"
+        "- worst_case_assumptions.trough_path: When balance sheet stress is present (negative equity, "
+        "covenant risk, high short-term debt), the trough narrative MUST address covenant breach "
+        "mechanics, forced asset sales, or restructuring paths — not just revenue/margin decline."
         + _format_sector_block(sector_knowledge)
     )
 
