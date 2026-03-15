@@ -337,6 +337,58 @@ def _write_manifest(
     scan_result.manifest_path.write_text(json.dumps(manifest, indent=2))
 
 
+def _build_peer_context(ticker: str, fmp_client: FmpClient) -> list[dict] | None:
+    """Fetch peer tickers and their comparison metrics.
+
+    Primary source: FMP stock-peers endpoint.
+    Fallback: same-sector screener if <2 peers returned.
+    Caps peer list at 5, filters by market cap proximity.
+    Returns None if no peers found or on total failure.
+    """
+    try:
+        # Primary: FMP stock-peers endpoint
+        try:
+            peer_tickers = fmp_client.stock_peers(ticker)
+        except Exception:
+            peer_tickers = []
+
+        # Fallback: same-sector screener if <2 peers
+        if len(peer_tickers) < 2:
+            try:
+                profile = fmp_client.profile(ticker)
+                sector = profile.get("sector", "")
+                if sector:
+                    screener = fmp_client.stock_screener(
+                        sector, exchange="", limit="10",
+                    )
+                    for s in screener:
+                        sym = s.get("symbol")
+                        if sym and sym != ticker and sym not in peer_tickers:
+                            peer_tickers.append(sym)
+            except Exception:
+                pass
+
+        if not peer_tickers:
+            logger.info("No peers found for %s", ticker)
+            return None
+
+        # Cap at 5
+        peer_tickers = peer_tickers[:5]
+
+        target_quote = fmp_client.quote(ticker)
+        target_mkt_cap = float(target_quote.get("marketCap", 0) or 0)
+        peer_context = fmp_client.peer_metrics(
+            peer_tickers, target_mkt_cap=target_mkt_cap,
+        )
+        print(f"  [{ticker}] Peer lookup: {len(peer_tickers)} tickers, {len(peer_context or [])} with metrics")
+        logger.info("Fetched %d peers for %s", len(peer_context or []), ticker)
+        return peer_context or None
+    except Exception as exc:
+        print(f"  [{ticker}] Peer lookup failed: {exc}")
+        logger.warning("Peer lookup failed for %s: %s", ticker, exc)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -406,43 +458,7 @@ def auto_scan(
 
         try:
             # Fetch peer context for decision memo grounding
-            peer_context: list[dict] | None = None
-            if fmp_client is not None:
-                try:
-                    # Primary: FMP stock-peers endpoint
-                    try:
-                        peer_tickers = fmp_client.stock_peers(ticker)
-                    except Exception:
-                        peer_tickers = []
-
-                    # Fallback: same-sector screener if <2 peers
-                    if len(peer_tickers) < 2:
-                        try:
-                            profile = fmp_client.profile(ticker)
-                            sector = profile.get("sector", "")
-                            if sector:
-                                screener = fmp_client.stock_screener(
-                                    sector, exchange="", limit="10",
-                                )
-                                for s in screener:
-                                    sym = s.get("symbol")
-                                    if sym and sym != ticker and sym not in peer_tickers:
-                                        peer_tickers.append(sym)
-                                peer_tickers = peer_tickers[:5]
-                        except Exception:
-                            pass
-
-                    if peer_tickers:
-                        target_quote = fmp_client.quote(ticker)
-                        target_mkt_cap = float(target_quote.get("marketCap", 0) or 0)
-                        peer_context = fmp_client.peer_metrics(
-                            peer_tickers, target_mkt_cap=target_mkt_cap,
-                        )
-                    print(f"  [{ticker}] Peer lookup: {len(peer_tickers)} tickers, {len(peer_context or [])} with metrics")
-                    logger.info("Fetched %d peers for %s", len(peer_context or []), ticker)
-                except Exception as exc:
-                    print(f"  [{ticker}] Peer lookup failed: {exc}")
-                    logger.warning("Peer lookup failed for %s: %s", ticker, exc)
+            peer_context = _build_peer_context(ticker, fmp_client) if fmp_client else None
 
             auto_result = auto_analyze(
                 ticker,
