@@ -28,6 +28,7 @@ from .epistemic_reviewer import (
 from .live_scan import run_live_scan
 from .sector import ensure_sector_knowledge
 from .structured_analysis import finalize_structured_analysis
+from .llm_logger import LlmInteractionLog, wrap_gemini_transport, wrap_transport
 from .validator import PreMortemValidatorClient, RedTeamValidatorClient, validate_overlay
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,7 @@ def auto_analyze(
     gemini_cache: GeminiCacheStore | None = None,
     peer_context: list[dict] | None = None,
     max_retries: int = 2,
+    llm_log: LlmInteractionLog | None = None,
 ) -> AutoAnalyzeResult:
     """Run the full automated analysis flow for a single ticker.
 
@@ -127,16 +129,32 @@ def auto_analyze(
     6. Merge epistemic PCS answers into overlay
     7. Finalize with LLM_CONFIRMED provenance
     """
+    # Build wrapped Gemini transport for logging if llm_log provided
+    gemini_transport_for_scan = None
+    if llm_log is not None:
+        from .gemini import _default_transport as _gemini_default_transport
+        gemini_transport_for_scan = wrap_gemini_transport(_gemini_default_transport, llm_log)
+
     # Step 1: Fetch raw bundles
     print(f"[{ticker}] Step 1/6: Fetching raw bundles ...")
     scan_result = run_live_scan(
         [ticker], out_dir=out_dir, stop_at="raw-bundle", config=config,
         fmp_transport=fmp_transport, gemini_cache=gemini_cache,
+        gemini_transport=gemini_transport_for_scan,
     )
 
     # Step 2: Load merged bundle
     merged_path = scan_result.written_paths["merged_raw"]
     merged_bundle = json.loads(merged_path.read_text())
+
+    # Log Gemini cache hit if transport was not called
+    if llm_log is not None:
+        has_gemini_record = any(r["agent"] == "gemini/qualitative" for r in llm_log._records)
+        gemini_raw_path = out_dir / "gemini-raw.json"
+        if not has_gemini_record and gemini_raw_path.exists():
+            gemini_data = json.loads(gemini_raw_path.read_text())
+            model = gemini_data.get("model", "gemini")
+            llm_log.record_cache_hit("gemini/qualitative", model, gemini_data)
 
     # Step 3: Load sector knowledge if not provided (auto-hydrate if missing/stale)
     if sector_knowledge is None:
@@ -159,6 +177,8 @@ def auto_analyze(
     # Step 4: Create agent clients if not injected
     if analyst_client is None or validator_client is None or epistemic_client is None or premortem_client is None:
         transport = _make_transport(config)
+        if llm_log is not None:
+            transport = wrap_transport(transport, llm_log, model_name=config.llm_model)
         api_key = (config.openai_api_key if config.llm_provider == "openai"
                    else config.anthropic_api_key)
         if analyst_client is None:
@@ -333,6 +353,11 @@ def auto_analyze(
 
     # Save finalized overlay
     _save_llm_artifact(out_dir, "finalized-overlay.json", finalized)
+
+    # Write LLM interaction audit log if logging enabled
+    if llm_log is not None:
+        log_path = llm_log.write_markdown(out_dir)
+        print(f"[{ticker}] LLM interaction log: {log_path}")
 
     return AutoAnalyzeResult(
         ticker=ticker,
