@@ -17,6 +17,7 @@ EVIDENCE_ARRAY_KEYS = [
     "catalyst_evidence",
     "risk_evidence",
     "management_observations",
+    "compensation_evidence",
     "moat_observations",
     "precedent_observations",
     "epistemic_anchors",
@@ -159,7 +160,10 @@ def _candidate_prompt(ticker: str, research_question: str, search_scope: str) ->
         f"Search scope: {search_scope}\n"
         "Return only sourced evidence snippets. Do not return screening verdicts, pass/reject decisions, "
         "probability bands, final catalyst classifications, or cluster status judgments.\n"
-        "Populate each evidence item with a concise claim, source title, and source URL."
+        "Populate each evidence item with a concise claim, source title, and source URL.\n"
+        "Include executive compensation structure from proxy filings (DEF 14A) if available: "
+        "what metrics is pay tied to (revenue, EPS, EBITDA, FCF, ROIC)? "
+        "Note insider buying/selling patterns."
     )
 
 

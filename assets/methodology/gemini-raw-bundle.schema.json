@@ -104,6 +104,7 @@
         "catalyst_evidence",
         "risk_evidence",
         "management_observations",
+        "compensation_evidence",
         "moat_observations",
         "precedent_observations",
         "epistemic_anchors"
@@ -150,6 +151,12 @@
           }
         },
         "management_observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/evidence_item"
+          }
+        },
+        "compensation_evidence": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/evidence_item"
