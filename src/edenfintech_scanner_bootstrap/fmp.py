@@ -272,6 +272,25 @@ class FmpClient:
         return results
 
 
+def _roic_pct(
+    operating_income: float,
+    income_tax: float,
+    income_before_tax: float,
+    total_equity: float,
+    total_debt: float,
+    cash: float,
+) -> float | None:
+    """Compute ROIC = NOPAT / Invested Capital * 100."""
+    if income_before_tax == 0:
+        return None
+    tax_rate = max(0.0, min(1.0, income_tax / income_before_tax))
+    nopat = operating_income * (1 - tax_rate)
+    invested_capital = total_equity + total_debt - cash
+    if invested_capital <= 0:
+        return None
+    return round(nopat / invested_capital * 100, 2)
+
+
 def _compute_trailing_ratios(
     income_statements: list[dict],
     cash_flows: list[dict],
@@ -298,6 +317,10 @@ def _compute_trailing_ratios(
     total_equity = float(latest_bs.get("totalStockholdersEquity", 0) or 0)
     current_assets = float(latest_bs.get("totalCurrentAssets", 0) or 0)
     current_liabilities = float(latest_bs.get("totalCurrentLiabilities", 0) or 0)
+    cash = float(latest_bs.get("cashAndCashEquivalents", 0) or 0)
+    sbc = latest_cf.get("stockBasedCompensation")
+    income_before_tax = float(latest_inc.get("incomeBeforeTax", 0) or 0)
+    income_tax = float(latest_inc.get("incomeTaxExpense", 0) or 0)
 
     # Discontinued operations gap detection
     discontinued_ops_flag = None
@@ -319,6 +342,8 @@ def _compute_trailing_ratios(
         "ocf_margin_pct": round(ocf / revenue * 100, 2) if revenue else None,
         "ebitda_margin_pct": round(ebitda / revenue * 100, 2) if revenue else None,
         "net_margin_pct": round(net_income / revenue * 100, 2) if revenue else None,
+        "roic_pct": _roic_pct(ebit, income_tax, income_before_tax, total_equity, total_debt, cash),
+        "sbc_pct_of_revenue": round(float(sbc) / revenue * 100, 2) if sbc is not None and revenue else None,
         "discontinued_ops_flag": discontinued_ops_flag,
     }
 
