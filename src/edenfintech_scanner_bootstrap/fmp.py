@@ -128,8 +128,8 @@ class FmpClient:
         return self.multi_quote(tickers)
 
     def stock_screener(self, sector: str, exchange: str = "NYSE", **filters: str) -> list[dict]:
-        params = {"sector": sector, "exchange": exchange, **filters}
-        payload = self._get("stock-screener", **params)
+        params = {"sector": sector, "exchange": exchange, "isActivelyTrading": "true", **filters}
+        payload = self._get("company-screener", **params)
         if not isinstance(payload, list):
             raise RuntimeError(f"FMP screener response malformed for sector={sector}")
         return payload
@@ -291,12 +291,25 @@ def _compute_trailing_ratios(
     interest = float(latest_inc.get("interestExpense", 0) or 0)
     ebitda = float(latest_inc.get("ebitda", 0) or 0)
     net_income = float(latest_inc.get("netIncome", 0) or 0)
+    has_continuing_ops = "netIncomeFromContinuingOperations" in latest_inc
     ocf = float(latest_cf.get("operatingCashFlow", 0) or 0)
     fcf = float(latest_cf.get("freeCashFlow", 0) or 0)
     total_debt = float(latest_bs.get("totalDebt", 0) or 0)
     total_equity = float(latest_bs.get("totalStockholdersEquity", 0) or 0)
     current_assets = float(latest_bs.get("totalCurrentAssets", 0) or 0)
     current_liabilities = float(latest_bs.get("totalCurrentLiabilities", 0) or 0)
+
+    # Discontinued operations gap detection
+    discontinued_ops_flag = None
+    if has_continuing_ops:
+        continuing_ops = float(latest_inc.get("netIncomeFromContinuingOperations", 0) or 0)
+        if continuing_ops != 0 or net_income != 0:
+            gap = abs(net_income - continuing_ops)
+            denominator = max(abs(net_income), 1)
+            if gap / denominator > 0.15:
+                discontinued_ops_flag = True
+            else:
+                discontinued_ops_flag = False
 
     return {
         "interest_coverage": round(ebit / interest, 2) if interest else None,
@@ -306,6 +319,7 @@ def _compute_trailing_ratios(
         "ocf_margin_pct": round(ocf / revenue * 100, 2) if revenue else None,
         "ebitda_margin_pct": round(ebitda / revenue * 100, 2) if revenue else None,
         "net_margin_pct": round(net_income / revenue * 100, 2) if revenue else None,
+        "discontinued_ops_flag": discontinued_ops_flag,
     }
 
 
@@ -323,10 +337,13 @@ def _shares_millions(income_statements: list[dict]) -> float:
     raise RuntimeError("FMP income statement did not contain usable share-count data")
 
 
-def _revenue_history_billions(income_statements: list[dict]) -> list[dict]:
+def _revenue_history_billions(income_statements: list[dict], *, exclude_years: set[str] | None = None) -> list[dict]:
     history: list[dict] = []
     for statement in _sorted_desc(income_statements):
         revenue = statement.get("revenue")
+        year = _year_from_date(statement.get("date"))
+        if exclude_years and year in exclude_years:
+            continue
         if isinstance(revenue, (int, float)):
             history.append(
                 {
@@ -337,7 +354,7 @@ def _revenue_history_billions(income_statements: list[dict]) -> list[dict]:
     return history
 
 
-def _fcf_margin_history_pct(income_statements: list[dict], cash_flow_statements: list[dict]) -> list[dict]:
+def _fcf_margin_history_pct(income_statements: list[dict], cash_flow_statements: list[dict], *, exclude_years: set[str] | None = None) -> list[dict]:
     sorted_income = _sorted_desc(income_statements)
     sorted_cashflows = _sorted_desc(cash_flow_statements)
     income_by_date = {statement.get("date"): statement for statement in sorted_income if isinstance(statement.get("date"), str)}
@@ -349,6 +366,9 @@ def _fcf_margin_history_pct(income_statements: list[dict], cash_flow_statements:
     history: list[dict] = []
     for cashflow in sorted_cashflows:
         cashflow_date = cashflow.get("date")
+        year = _year_from_date(cashflow_date)
+        if exclude_years and year in exclude_years:
+            continue
         statement = income_by_date.get(cashflow_date)
         if statement is None:
             statement = income_by_year.get(_year_from_date(cashflow_date))
@@ -367,6 +387,87 @@ def _fcf_margin_history_pct(income_statements: list[dict], cash_flow_statements:
     return history
 
 
+def _check_statement_completeness(
+    income_statements: list[dict],
+    cash_flows: list[dict],
+    balance_sheets: list[dict],
+    *,
+    is_actively_trading: bool = True,
+) -> dict:
+    """Detect zero-filled/incomplete financial statements.
+
+    Uses structural invariants (not field-count density) to flag
+    statements where FMP returned placeholder zeros.
+    """
+    warnings: list[dict] = []
+    incomplete_years: list[str] = []
+
+    for cf in cash_flows:
+        year = _year_from_date(cf.get("date"))
+        ocf = float(cf.get("operatingCashFlow", 0) or 0)
+        capex = float(cf.get("capitalExpenditure", 0) or 0)
+        cash_end = float(cf.get("cashAtEndOfPeriod", 0) or 0)
+        if ocf == 0 and capex == 0 and cash_end > 0:
+            warnings.append({
+                "statement": "cash_flow",
+                "fiscal_year": year,
+                "reason": "operatingCashFlow=0 AND capitalExpenditure=0 but cashAtEndOfPeriod>0",
+            })
+            if year and year not in incomplete_years:
+                incomplete_years.append(year)
+
+    for inc in income_statements:
+        year = _year_from_date(inc.get("date"))
+        revenue = float(inc.get("revenue", 0) or 0)
+        op_expenses = float(inc.get("operatingExpenses", 0) or 0)
+        net_income = float(inc.get("netIncome", 0) or 0)
+        cogs = float(inc.get("costOfRevenue", 0) or 0)
+        gross_profit = float(inc.get("grossProfit", 0) or 0)
+        if revenue > 0 and op_expenses == 0 and net_income == 0:
+            warnings.append({
+                "statement": "income",
+                "fiscal_year": year,
+                "reason": "revenue>0 AND operatingExpenses=0 AND netIncome=0",
+            })
+            if year and year not in incomplete_years:
+                incomplete_years.append(year)
+        if revenue > 0 and cogs == 0 and gross_profit == 0:
+            warnings.append({
+                "statement": "income",
+                "fiscal_year": year,
+                "reason": "revenue>0 AND costOfRevenue=0 AND grossProfit=0",
+            })
+            if year and year not in incomplete_years:
+                incomplete_years.append(year)
+
+    for bs in balance_sheets:
+        year = _year_from_date(bs.get("date"))
+        total_assets = float(bs.get("totalAssets", 0) or 0)
+        total_liab_eq = float(bs.get("totalLiabilitiesAndTotalEquity", 0) or 0)
+        if total_assets > 0 and total_liab_eq == 0:
+            warnings.append({
+                "statement": "balance_sheet",
+                "fiscal_year": year,
+                "reason": "totalAssets>0 but totalLiabilitiesAndTotalEquity=0",
+            })
+            if year and year not in incomplete_years:
+                incomplete_years.append(year)
+        if total_assets == 0 and is_actively_trading:
+            warnings.append({
+                "statement": "balance_sheet",
+                "fiscal_year": year,
+                "reason": "totalAssets=0 while company is actively trading",
+            })
+            if year and year not in incomplete_years:
+                incomplete_years.append(year)
+
+    return {
+        "has_incomplete_statements": len(incomplete_years) > 0,
+        "incomplete_years": incomplete_years,
+        "warnings": warnings,
+    }
+
+
 def build_raw_candidate_from_fmp(ticker: str, client: FmpClient) -> dict:
     profile = client.profile(ticker)
     quote = client.quote(ticker)
@@ -380,10 +481,19 @@ def build_raw_candidate_from_fmp(ticker: str, client: FmpClient) -> dict:
     if not numeric_closes:
         raise RuntimeError(f"FMP historical prices did not contain usable close data for {ticker}")
     all_time_high = max(numeric_closes)
-    revenue_history = _revenue_history_billions(income_statements)
-    fcf_history = _fcf_margin_history_pct(income_statements, cash_flows)
+    is_actively_trading = profile.get("isActivelyTrading", True)
+    data_quality = _check_statement_completeness(
+        income_statements, cash_flows, balance_sheets,
+        is_actively_trading=is_actively_trading,
+    )
+    exclude_years = set(data_quality["incomplete_years"])
+    revenue_history = _revenue_history_billions(income_statements, exclude_years=exclude_years)
+    fcf_history = _fcf_margin_history_pct(income_statements, cash_flows, exclude_years=exclude_years)
     shares_m = _shares_millions(income_statements)
     trailing_ratios = _compute_trailing_ratios(income_statements, cash_flows, balance_sheets)
+    # Merge A2/A3 flags into data_quality
+    data_quality["discontinued_ops_flag"] = trailing_ratios.get("discontinued_ops_flag")
+    data_quality["is_actively_trading"] = profile.get("isActivelyTrading", True)
 
     latest_revenue_b = revenue_history[0]["revenue_b"] if revenue_history else None
     trough_revenue_b = min(item["revenue_b"] for item in revenue_history) if revenue_history else None
@@ -394,6 +504,7 @@ def build_raw_candidate_from_fmp(ticker: str, client: FmpClient) -> dict:
         "ticker": ticker,
         "cluster_name": f"{ticker.lower()}-cluster",
         "industry": profile.get("industry", "Unknown Industry"),
+        "is_actively_trading": profile.get("isActivelyTrading", True),
         "company_description": profile.get("description", ""),
         "current_price": _round2(current_price),
         "trailing_ratios": trailing_ratios,
@@ -402,6 +513,7 @@ def build_raw_candidate_from_fmp(ticker: str, client: FmpClient) -> dict:
             "all_time_high": _round2(all_time_high),
             "pct_off_ath": _pct_off_ath(current_price, all_time_high),
         },
+        "data_quality": data_quality,
         "fmp_context": {
             "profile": profile,
             "quote": quote,

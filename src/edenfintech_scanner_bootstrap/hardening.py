@@ -131,22 +131,90 @@ VALID_TI_CATEGORIES = frozenset({
     "tech_disruption", "market_structure",
 })
 
-# Expanded anti-anchoring regex: catches "15%", "15 percent", "0.15",
-# "fifteen percent", "1 in 5", etc.
+# Expanded anti-anchoring regex: catches "15%", "15 percent",
+# "probability of 0.15", "fifteen percent", "1 in 5", etc.
+# NOTE: bare 0.\d+ removed — it false-flagged financial ratios like
+# "interest coverage = 0.26".  Now requires probability/chance/likelihood/odds
+# context around the decimal.
 _THESIS_ANCHORING_PATTERN = re.compile(
     r'\b(?:100|\d{1,2}(?:\.\d+)?)\s*(?:%|percent|pct)'
     r'|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|'
     r'eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|'
     r'nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)'
     r'\s+percent\b'
-    r'|\b0\.\d+\b'
+    r'|(?:(?:probability|chance|likelihood|odds)\s+(?:is\s+|of\s+|at\s+)?0\.\d+)'
+    r'|(?:0\.\d+\s+(?:probability|chance|likelihood|odds))'
     r'|\b\d+\s+(?:in|out\s+of)\s+\d+\b',
     flags=re.IGNORECASE,
 )
 
 
-def detect_thesis_break(thesis_invalidation: dict | None) -> dict | None:
+def _apply_deterministic_overrides(
+    conditions: list[dict],
+    fmp_derived: dict | None,
+) -> tuple[list[dict], list[str]]:
+    """Force evidence_status upgrades based on observable FMP metrics.
+
+    This runs BEFORE the LLM's assessment is evaluated, ensuring that
+    unambiguous balance-sheet distress cannot be downgraded by LLM
+    narrative. The LLM's original assessment is preserved in the
+    condition but the evidence_status is overridden.
+
+    Returns (conditions, override_notes).
+    """
+    if fmp_derived is None:
+        return conditions, []
+
+    override_notes: list[str] = []
+
+    interest_coverage = fmp_derived.get("interest_coverage")
+    stockholders_equity = fmp_derived.get("stockholders_equity")
+    fcf_margin = fmp_derived.get("latest_fcf_margin_pct")
+
+    # Capital structure: deterministic strong_evidence
+    # If interest_coverage < 1.0 AND equity < 0 AND fcf_margin <= 0,
+    # the balance sheet is observably distressed. No LLM override.
+    cap_structure_distressed = (
+        interest_coverage is not None
+        and stockholders_equity is not None
+        and fcf_margin is not None
+        and interest_coverage < 1.0
+        and stockholders_equity < 0
+        and fcf_margin <= 0
+    )
+
+    if cap_structure_distressed:
+        for condition in conditions:
+            if condition.get("category") == "capital_structure":
+                old_status = condition.get("evidence_status", "")
+                if old_status != "strong_evidence":
+                    condition["evidence_status"] = "strong_evidence"
+                    condition["rationale"] = (
+                        f"DETERMINISTIC OVERRIDE: interest_coverage={interest_coverage}, "
+                        f"stockholders_equity={stockholders_equity}, "
+                        f"fcf_margin={fcf_margin}. "
+                        f"All three metrics breach distress thresholds "
+                        f"(IC<1.0, equity<0, FCF<=0). "
+                        f"LLM assessed '{old_status}' but math is unambiguous."
+                    )
+                    override_notes.append(
+                        f"capital_structure forced from '{old_status}' to "
+                        f"'strong_evidence' by deterministic pre-check "
+                        f"(IC={interest_coverage}, equity={stockholders_equity}, "
+                        f"FCF={fcf_margin})"
+                    )
+
+    return conditions, override_notes
+
+
+def detect_thesis_break(
+    thesis_invalidation: dict | None,
+    fmp_derived: dict | None = None,
+) -> dict | None:
     """Check thesis_invalidation conditions for imminent break signals.
+
+    Applies deterministic overrides from FMP metrics FIRST, then
+    checks for anti-anchoring violations and evidence status.
 
     Returns flag dict if:
     - Anti-anchoring violation (percentages smuggled into text)
@@ -161,7 +229,18 @@ def detect_thesis_break(thesis_invalidation: dict | None) -> dict | None:
     conditions = thesis_invalidation.get("conditions", [])
     imminent = thesis_invalidation.get("imminent_break_flag", False)
 
-    # Anti-anchoring: reject if any condition text contains probability numbers
+    # Step 0: Deterministic overrides from FMP metrics
+    conditions, override_notes = _apply_deterministic_overrides(
+        conditions, fmp_derived,
+    )
+    if override_notes:
+        # Force imminent flag if deterministic override elevated any
+        # condition to strong_evidence
+        imminent = True
+        thesis_invalidation["imminent_break_flag"] = True
+
+    # Step 1: Anti-anchoring — reject if any condition text contains
+    # probability numbers
     for condition in conditions:
         for text_field in ("risk_description", "early_warning_metric"):
             text = condition.get(text_field, "")
@@ -175,7 +254,7 @@ def detect_thesis_break(thesis_invalidation: dict | None) -> dict | None:
                     ),
                 }
 
-    # Validate evidence_status values
+    # Step 2: Validate evidence_status values
     strong_conditions: list[dict] = []
     weak_conditions: list[dict] = []
     for condition in conditions:
@@ -194,7 +273,7 @@ def detect_thesis_break(thesis_invalidation: dict | None) -> dict | None:
             weak_conditions.append(condition)
 
     if imminent or strong_conditions:
-        return {
+        result: dict = {
             "flag": "THESIS_BREAK_IMMINENT",
             "imminent_break_flag": True,
             "strong_evidence_conditions": [
@@ -210,6 +289,9 @@ def detect_thesis_break(thesis_invalidation: dict | None) -> dict | None:
                 f"must be forced below 60%."
             ),
         }
+        if override_notes:
+            result["deterministic_overrides"] = override_notes
+        return result
 
     if weak_conditions:
         return {

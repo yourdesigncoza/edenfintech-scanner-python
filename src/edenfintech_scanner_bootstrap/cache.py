@@ -23,7 +23,7 @@ DEFAULT_TTLS: dict[str, int] = {
     "enterprise-values": 604_800,       # 7 days
     "ratios": 604_800,                  # 7 days
     # batch-quote removed: now uses standard "quote" endpoint with comma-separated symbols
-    "stock-screener": 604_800,          # 7 days
+    "company-screener": 604_800,        # 7 days
     "stock-peers": 2_592_000,           # 30 days
 }
 

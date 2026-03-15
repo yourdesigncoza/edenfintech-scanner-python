@@ -96,9 +96,16 @@ CONCRETE_SOURCE_MARKERS = [
     "balance sheet", "cash flow statement", "key metrics",
     # Gemini qualitative sources
     "seeking alpha", "fintool", "grounded search",
+    # Gemini grounding URLs
+    "vertexaisearch", "grounding-api-redirect",
+    # Common Gemini-sourced domains
+    "businesswire", "bioworld", "spglobal", "simplywall",
+    "morningstar", "tradingeconomics",
     # Sector knowledge
     "sector knowledge",
 ]
+
+_URL_PATTERN = re.compile(r'https?://\S+')
 
 
 def is_weak_evidence(evidence_text: str) -> bool:
@@ -111,7 +118,7 @@ def is_weak_evidence(evidence_text: str) -> bool:
     if not lower or lower == "no_evidence":
         return False
 
-    has_concrete = any(marker in lower for marker in CONCRETE_SOURCE_MARKERS)
+    has_concrete = any(marker in lower for marker in CONCRETE_SOURCE_MARKERS) or bool(_URL_PATTERN.search(lower))
     has_vague = any(pattern in lower for pattern in WEAK_EVIDENCE_PATTERNS)
     return has_vague or not has_concrete
 

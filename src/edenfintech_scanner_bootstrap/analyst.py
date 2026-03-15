@@ -408,12 +408,39 @@ def _extract_evidence_snippets(raw_candidate: dict) -> set[str]:
 
 
 # ---------------------------------------------------------------------------
+# Context deduplication
+# ---------------------------------------------------------------------------
+
+_SLIM_STRIP_KEYS = ("annual_income_statements", "annual_cash_flows", "annual_balance_sheets")
+
+
+def _build_slim_candidate(raw_candidate: dict) -> dict:
+    """Strip bulky financial statement arrays for Stage 2/3 prompts.
+
+    Uses shallow copy of root + fmp_context (not deepcopy) for performance.
+    Replaces each array with a placeholder string so the LLM knows the key
+    exists and data was analyzed in Stage 1.
+    """
+    slim = dict(raw_candidate)
+    if "fmp_context" in slim:
+        slim["fmp_context"] = dict(slim["fmp_context"])
+        for key in _SLIM_STRIP_KEYS:
+            if key in slim["fmp_context"]:
+                items = slim["fmp_context"][key]
+                count = len(items) if isinstance(items, list) else 0
+                slim["fmp_context"][key] = (
+                    f"[{count} periods — see Stage 1 fundamentals output for details]"
+                )
+    return slim
+
+
+# ---------------------------------------------------------------------------
 # Shared prompt rules
 # ---------------------------------------------------------------------------
 
 _METHODOLOGY_RULES = """\
 METHODOLOGY RULES:
-- Every field must be grounded in specific evidence from the raw candidate data.
+- Every field must be grounded in specific evidence from the raw candidate data or prior stage outputs.
 - Every field_provenance entry must have status 'LLM_DRAFT'.
 - Every field_provenance entry must include a non-empty review_note that cites a specific named source.
 - No __REQUIRED__ placeholders may appear in any field.
@@ -476,11 +503,42 @@ def _build_fundamentals_system_prompt(sector_knowledge: dict | None = None) -> s
     )
 
 
+def _format_data_quality_warning(raw_candidate: dict) -> str:
+    """Build a DATA QUALITY WARNING block if incomplete statements detected."""
+    dq = raw_candidate.get("data_quality", {})
+    if not dq.get("has_incomplete_statements"):
+        return ""
+    # Group affected statements by year for specificity
+    year_statements: dict[str, list[str]] = {}
+    statement_labels = {
+        "cash_flow": "Cash Flow",
+        "income": "Income Statement",
+        "balance_sheet": "Balance Sheet",
+    }
+    for w in dq.get("warnings", []):
+        yr = w.get("fiscal_year", "?")
+        label = statement_labels.get(w.get("statement", ""), w.get("statement", "unknown"))
+        year_statements.setdefault(yr, [])
+        if label not in year_statements[yr]:
+            year_statements[yr].append(label)
+    details = "; ".join(
+        f"FY{yr} ({', '.join(stmts)})" for yr, stmts in year_statements.items()
+    )
+    return "\n".join([
+        "DATA QUALITY WARNING:",
+        f"FMP API returned incomplete data for: {details}.",
+        "Treat zero values in these statements as N/A — they reflect missing FMP data,",
+        "not operational collapse or real business performance.",
+        "",
+    ])
+
+
 def _build_fundamentals_user_prompt(
     raw_candidate: dict,
     evidence_context: dict,
     evidence_snippets: set[str],
 ) -> str:
+    dq_warning = _format_data_quality_warning(raw_candidate)
     return "\n".join([
         "Analyze the following raw candidate and produce the quantitative fundamentals overlay.",
         "",
@@ -488,6 +546,7 @@ def _build_fundamentals_user_prompt(
         f"Industry: {raw_candidate.get('industry', 'Unknown')}",
         f"Current Price: {raw_candidate.get('current_price', 'N/A')}",
         "",
+        dq_warning,
         "EVIDENCE CONTEXT:",
         json.dumps(evidence_context, indent=2),
         "",
@@ -547,6 +606,7 @@ def _build_qualitative_user_prompt(
     *,
     peer_context: list[dict] | None = None,
 ) -> str:
+    dq_warning = _format_data_quality_warning(raw_candidate)
     parts = [
         "Analyze the following raw candidate and produce the qualitative analysis overlay.",
         "",
@@ -554,6 +614,7 @@ def _build_qualitative_user_prompt(
         f"Industry: {raw_candidate.get('industry', 'Unknown')}",
         f"Current Price: {raw_candidate.get('current_price', 'N/A')}",
         "",
+        dq_warning,
         "STAGE 1 FUNDAMENTALS (for reference — do not reproduce these fields):",
         json.dumps(fundamentals_output, indent=2),
     ]
@@ -568,8 +629,8 @@ def _build_qualitative_user_prompt(
         "AVAILABLE SOURCE TITLES:",
         ", ".join(sorted(evidence_snippets)),
         "",
-        "RAW CANDIDATE DATA:",
-        json.dumps(raw_candidate, indent=2),
+        "RAW CANDIDATE DATA (financial statements omitted — see Stage 1 output above):",
+        json.dumps(_build_slim_candidate(raw_candidate), indent=2),
     ])
     return "\n".join(parts)
 
@@ -655,8 +716,8 @@ def _build_synthesis_user_prompt(
         ])
     parts.extend([
         "",
-        "RAW CANDIDATE DATA (for cross-reference):",
-        json.dumps(raw_candidate, indent=2),
+        "RAW CANDIDATE DATA (financial statements omitted — see Stage 1/2 outputs above):",
+        json.dumps(_build_slim_candidate(raw_candidate), indent=2),
     ])
     if validator_objections:
         parts.extend([

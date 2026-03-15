@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .automation import AutoAnalyzeResult, auto_analyze
 from .cache import GeminiCacheStore
+from .llm_logger import LlmInteractionLog
 from .config import AppConfig
 from .fmp import FmpClient, FmpTransport, build_raw_candidate_from_fmp
 from .hardening import (
@@ -25,7 +26,7 @@ from .hardening import (
     score_evidence_quality,
 )
 from .pipeline import ScanArtifacts, rank_within_cluster, run_scan
-from .sector import check_sector_freshness
+from .sector import ensure_sector_knowledge
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +122,47 @@ def _extract_hardening_flags(
     else:
         flags["cagr_exception"] = None
 
-    # 4. Thesis break detection
+    # 4. Thesis break detection (with deterministic FMP overrides)
     thesis_invalidation = overlay_candidate.get("thesis_invalidation")
-    thesis_break = detect_thesis_break(thesis_invalidation)
+    fmp_derived = raw_candidate.get("fmp_context", {}).get("derived", {})
+    # Build distress metrics from FMP for deterministic pre-check
+    fmp_distress_metrics = None
+    if fmp_derived:
+        profile = raw_candidate.get("fmp_context", {}).get("profile", {})
+        trailing = profile.get("trailing_ratios", {}) if isinstance(profile, dict) else {}
+        # Interest coverage from trailing ratios or compute from income statement
+        ic = trailing.get("interest_coverage")
+        if ic is None:
+            # Fallback: try annual income statements
+            stmts = raw_candidate.get("fmp_context", {}).get("annual_income_statements", [])
+            if stmts and isinstance(stmts[0], dict):
+                ebit = stmts[0].get("operatingIncome", 0) or 0
+                interest = stmts[0].get("interestExpense", 0) or 0
+                if interest > 0:
+                    ic = ebit / interest
+        fmp_distress_metrics = {
+            "interest_coverage": ic,
+            "stockholders_equity": None,
+            "latest_fcf_margin_pct": fmp_derived.get("latest_fcf_margin_pct"),
+        }
+        # Get stockholders equity from balance sheet
+        bs = raw_candidate.get("fmp_context", {}).get("annual_balance_sheets", [])
+        if bs and isinstance(bs[0], dict):
+            fmp_distress_metrics["stockholders_equity"] = bs[0].get("totalStockholdersEquity")
+
+    thesis_break = detect_thesis_break(thesis_invalidation, fmp_derived=fmp_distress_metrics)
     flags["thesis_break"] = thesis_break
+
+    # D1: Surface data quality from raw candidate
+    data_quality = raw_candidate.get("data_quality", {})
+    flags["data_quality"] = data_quality
+    if data_quality.get("has_incomplete_statements"):
+        logger.warning(
+            "Data quality: %s has incomplete statements for years %s",
+            raw_candidate.get("ticker", "?"),
+            data_quality.get("incomplete_years", []),
+        )
+
     if thesis_break:
         flag_type = thesis_break.get("flag")
         if flag_type == "THESIS_BREAK_IMMINENT":
@@ -317,6 +355,7 @@ def auto_scan(
     analyst_client=None,
     validator_client=None,
     epistemic_client=None,
+    llm_log: LlmInteractionLog | None = None,
 ) -> ScanResult:
     """Run auto_analyze + pipeline for each ticker sequentially.
 
@@ -415,6 +454,7 @@ def auto_scan(
                 validator_client=validator_client,
                 epistemic_client=epistemic_client,
                 peer_context=peer_context,
+                llm_log=llm_log,
             )
             ticker_result = _process_single_ticker(
                 ticker, auto_result,
@@ -467,7 +507,7 @@ def sector_scan(
 ) -> ScanResult:
     """Scan an entire sector: screener, filter, cluster, analyze.
 
-    1. Check hydration via check_sector_freshness
+    1. Auto-hydrate sector if missing or stale (60-day threshold)
     2. Get screener results via FMP
     3. Apply broken-chart filter (>= 60% off ATH)
     4. Exclude tickers in excluded_industries
@@ -481,12 +521,8 @@ def sector_scan(
     out_dir.mkdir(parents=True, exist_ok=True)
     started_at = datetime.now(timezone.utc).isoformat()
 
-    # Step 1: Check hydration
-    freshness = check_sector_freshness(sector_name)
-    if freshness["status"] == "NOT_HYDRATED":
-        raise ValueError(
-            f"Sector '{sector_name}' is not hydrated. Run hydrate-sector first."
-        )
+    # Step 1: Auto-hydrate if missing or stale (60-day threshold)
+    ensure_sector_knowledge(sector_name, staleness_days=60, config=config)
 
     # Step 2: Get screener results
     if fmp_client is None:

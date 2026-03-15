@@ -25,6 +25,7 @@ from .structured_analysis import (
     review_structured_analysis_file,
     suggest_review_notes_file,
 )
+from .llm_logger import LlmInteractionLog
 from .scanner import auto_scan, sector_scan
 from .sector import check_sector_freshness, hydrate_sector, _load_registry, _slugify
 from .validation import validate_assets
@@ -532,12 +533,14 @@ def _cmd_auto_scan(tickers: list[str], out_dir: str | None, fresh: bool = False)
     store = FmpCacheStore(_default_fmp_cache_dir())
     transport = cached_transport(_default_transport, store, fresh=fresh)
     gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir())
+    llm_log = LlmInteractionLog()
     result = auto_scan(
         tickers,
         config=config,
         out_dir=Path(out_dir) if out_dir else None,
         fmp_transport=transport,
         gemini_cache=gemini_cache,
+        llm_log=llm_log,
     )
     summary = result.manifest_path.read_text() if result.manifest_path.exists() else "{}"
     manifest = json.loads(summary)
@@ -725,6 +728,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    RED_BOLD = "\033[1;31m"
+    RESET = "\033[0m"
+    banner = """
+ _   _      _ _         ____  _         ____
+| | | | ___| | | ___   | __ )(_) __ _  | __ )  ___  ___ ___
+| |_| |/ _ \\ | |/ _ \\  |  _ \\| |/ _` | |  _ \\ / _ \\/ __/ __|
+|  _  |  __/ | | (_) | | |_) | | (_| | | |_) | (_) \\__ \\__ \\
+|_| |_|\\___|_|_|\\___/  |____/|_|\\__, | |____/ \\___/|___/___/
+                                |___/
+"""
+    print(f"{RED_BOLD}{banner}{RESET}")
     parser = build_parser()
     args = parser.parse_args(argv)
 
