@@ -17,9 +17,10 @@ source .venv/bin/activate
 # Install in editable mode
 pip install -e .
 
-# Copy and configure environment variables
-cp .env.example .env
-# Edit .env with your API keys
+# Set up encrypted secrets (see Secrets Management below)
+cp .env.example .env        # fill in your API keys
+./scripts/setup-age.sh      # encrypt → .env.age
+rm .env                     # remove plaintext
 
 # Validate methodology assets
 edenfintech-bootstrap validate-assets
@@ -35,6 +36,109 @@ edenfintech-bootstrap validate-assets
 | `OPENAI_API_KEY` | No | Enables API judge; falls back to deterministic local judge |
 | `CODEX_JUDGE_MODEL` | No | Model for judge calls (default: `gpt-5-codex`) |
 | `ANALYST_MODEL` | No | Model for analyst drafts (default: `claude-sonnet-4-5-20250514`) |
+
+## Secrets Management
+
+API keys are **never stored as plaintext on disk**. The project uses [age](https://github.com/FiloSottile/age) encryption for local development and relies on platform-native environment variables for deployment.
+
+### How it works
+
+| Context | Secret source | How keys get in |
+|---|---|---|
+| **Local dev** | `.env.age` (encrypted, committed to git) | Decrypted into memory at runtime via `age` |
+| **Deployment** (Railway, Vercel, etc.) | Platform environment variables | Injected by the platform — no file needed |
+| **CI** | CI secrets / env vars | Set in CI config — no file needed |
+
+`config.py` auto-detects the environment using this priority:
+
+1. **Env vars already set** (Railway, Vercel, CI) → no file loading needed
+2. **`.env.age` exists + `age` installed** → decrypt into memory at runtime
+3. **`.env` exists** (legacy fallback) → read plaintext file
+
+  # 1. Decrypt current secrets to a temp file
+  age --decrypt --identity ~/.config/sops/age/keys.txt .env.age > /tmp/.env.plain
+
+  # 2. Edit the plaintext — update LLM_PROVIDER, models, add temperature vars
+  nano /tmp/.env.plain
+
+  # 3. Re-encrypt with your public key
+  age --encrypt --recipients-file ~/.config/sops/age/keys.txt -o .env.age /tmp/.env.plain
+  
+  age --encrypt -r age1lazpek4h... -o .env.age /tmp/.env.plain ( Get this key inside the keys.txt )
+
+  # 4. Shred the plaintext
+  shred -u /tmp/.env.plain
+
+
+Then shred -u /tmp/.env.plain.
+
+### Key file location
+
+The age identity (private key) is resolved in this order:
+
+1. `AGE_IDENTITY` env var — set this in CI or custom setups
+2. `~/.config/sops/age/keys.txt` — default local path
+
+**Never commit your private key.** Back it up securely. The public key can be shared freely.
+
+### Initial setup (local dev)
+
+```bash
+# 1. Install age
+sudo apt-get install -y age    # Ubuntu/Debian
+brew install age                # macOS
+
+# 2. Run the setup script from the project root
+cd ~/zoot/projects/edenfintech-scanner-python   # must be in project root
+./scripts/setup-age.sh
+
+# 3. Verify it works
+source .venv/bin/activate
+python -c "from edenfintech_scanner_bootstrap.config import load_config; c = load_config(); print('OK:', bool(c.fmp_api_key))"
+
+# 4. Remove the plaintext .env
+rm .env
+```
+
+The setup script will:
+- Generate an age keypair at `~/.config/sops/age/keys.txt` (if none exists)
+- Encrypt `.env` → `.env.age`
+- Verify the round-trip (decrypt matches original)
+
+### Editing secrets
+
+```bash
+# Decrypt to temp file, edit, re-encrypt
+age --decrypt --identity ~/.config/sops/age/keys.txt .env.age > .env.tmp
+# ... edit .env.tmp ...
+PUBLIC_KEY=$(grep -oP 'public key: \K.*' ~/.config/sops/age/keys.txt)
+age -r "$PUBLIC_KEY" -o .env.age .env.tmp && rm .env.tmp
+```
+
+`.env.tmp` is in `.gitignore` so it won't be accidentally committed, but always delete it after re-encrypting.
+
+### Deployment (Railway, Vercel, etc.)
+
+No age setup needed. Set your API keys as environment variables in the platform dashboard. `config.py` detects that keys are already in the environment and skips all file-based loading.
+
+### Onboarding a new developer
+
+1. Install `age` and generate a key: `age-keygen -o ~/.config/sops/age/keys.txt`
+2. Share your **public key** (starts with `age1...`) with the team lead
+3. The lead re-encrypts `.env.age` with all team members' public keys:
+   `age -r PUBLIC_KEY_1 -r PUBLIC_KEY_2 -o .env.age .env.tmp`
+
+### Troubleshooting
+
+| Error | Cause | Fix |
+|---|---|---|
+| `no identity matched any of the recipients` | age can't find your private key, or file was encrypted with a different key | Ensure `~/.config/sops/age/keys.txt` exists and matches the public key used to encrypt. Re-run `./scripts/setup-age.sh` to re-encrypt with your current key. |
+| `age: command not found` | age not installed | `sudo apt-get install -y age` (Ubuntu) or `brew install age` (macOS) |
+| `No .env file found` | Running setup-age.sh without a .env | Create `.env` from `.env.example` first: `cp .env.example .env` |
+
+### Why not plaintext .env?
+
+Any process running as your user can read `.env` — including AI coding assistants, rogue npm packages, or malicious VS Code extensions. Encrypting at rest means secrets only exist in process memory at runtime.
 
 ## Architecture
 

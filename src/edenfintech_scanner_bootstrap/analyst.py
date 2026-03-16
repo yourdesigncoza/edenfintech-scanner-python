@@ -13,6 +13,7 @@ On validator REJECT retry, only Stage 3 re-runs (Stages 1+2 cached).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 import time
@@ -30,6 +31,8 @@ from .structured_analysis import (
     validate_structured_analysis,
 )
 
+logger = logging.getLogger(__name__)
+
 AnalystTransport = Callable[[dict], dict]
 
 # Constraints that are unsupported in constrained decoding output schemas
@@ -38,7 +41,7 @@ _UNSUPPORTED_CONSTRAINTS = {"minLength", "maxLength", "minimum", "maximum", "min
 # Fields assigned to each stage (tuples for deterministic schema property ordering)
 _FUNDAMENTALS_ANALYSIS_FIELDS = (
     "margin_trend_gate", "setup_pattern",
-    "base_case_assumptions", "worst_case_assumptions", "stretch_case_assumptions",
+    "worst_case_assumptions", "base_case_assumptions", "stretch_case_assumptions",
     "probability_inputs", "key_financials",
 )
 
@@ -180,6 +183,26 @@ def _ensure_provenance_completeness(
     if repaired:
         print(f"  [provenance repair] {len(repaired)} fields: {', '.join(repaired)}")
 
+    # Deduplicate: LLM may emit multiple entries for the same field_path.
+    # Keep the first occurrence (likely the most contextual rationale).
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    dropped: list[str] = []
+    for entry in prov_list:
+        if not isinstance(entry, dict):
+            continue
+        fp = entry.get("field_path", "")
+        if fp in seen:
+            dropped.append(fp)
+            continue
+        seen.add(fp)
+        deduped.append(entry)
+    if dropped:
+        logger.warning("Dropped %d duplicate provenance entries: %s", len(dropped), ", ".join(dropped))
+        print(f"  [provenance dedup] dropped {len(dropped)}: {', '.join(dropped)}")
+    synthesis_output["field_provenance"] = deduped
+    prov_list = deduped
+
     existing = {p.get("field_path") for p in prov_list if isinstance(p, dict)}
     filled: list[str] = []
 
@@ -220,6 +243,18 @@ def _coerce_analysis_types(analysis_inputs: dict) -> dict:
     elif isinstance(ts, list):
         analysis_inputs["thesis_summary"] = " ".join(str(v) for v in ts)
         print("  [coerce] thesis_summary: list -> string")
+
+    # Repair catalyst_stack entries missing required 'timeline' field
+    catalyst_stack = analysis_inputs.get("catalyst_stack")
+    if isinstance(catalyst_stack, list):
+        repaired = 0
+        for entry in catalyst_stack:
+            if isinstance(entry, dict) and "timeline" not in entry:
+                entry["timeline"] = "Not specified by analyst"
+                repaired += 1
+        if repaired:
+            print(f"  [coerce] catalyst_stack: added missing timeline to {repaired} entries")
+
     return analysis_inputs
 
 
@@ -236,7 +271,7 @@ def _strip_unsupported_constraints(schema: dict) -> dict:
     if isinstance(schema_type, list):
         cleaned["type"] = "object" if "object" in schema_type else schema_type[0]
 
-    if cleaned.get("type") == "object" and "properties" in cleaned:
+    if cleaned.get("type") == "object":
         cleaned["additionalProperties"] = False
 
     if "properties" in cleaned:
@@ -812,19 +847,17 @@ def _post_validate(
                 f"LLM output missing review_note for {item.get('field_path', 'unknown')}"
             )
 
-    wc_pos = raw_response_text.find('"worst_case')
-    bc_pos = raw_response_text.find('"base_case')
-    if wc_pos >= 0 and bc_pos >= 0 and wc_pos > bc_pos:
-        raise ValueError(
-            "LLM output violates ordering discipline: worst_case must appear before base_case in response text"
-        )
-
-    bear_pos = raw_response_text.find('"bear')
-    bull_pos = raw_response_text.find('"bull')
-    if bear_pos >= 0 and bull_pos >= 0 and bear_pos > bull_pos:
-        raise ValueError(
-            "LLM output violates ordering discipline: bear must appear before bull in response text"
-        )
+    # Ordering discipline: thesis_summary must lead with bear case.
+    # We check the thesis_summary TEXT content (not JSON property order,
+    # which is implementation-specific and varies by provider/decoder).
+    thesis = candidate_output.get("analysis_inputs", {}).get("thesis_summary", "")
+    if isinstance(thesis, str):
+        bear_pos = thesis.lower().find("bear")
+        bull_pos = thesis.lower().find("bull")
+        if bear_pos >= 0 and bull_pos >= 0 and bear_pos > bull_pos:
+            raise ValueError(
+                "LLM output violates ordering discipline: bear must appear before bull in thesis_summary"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -858,6 +891,8 @@ class ClaudeAnalystClient:
         transport: AnalystTransport | None = None,
         synthesis_timeout: int = 300,
         artifact_dir: Path | None = None,
+        temperature: float = 0.0,
+        top_k: int | None = 1,
     ) -> None:
         self.api_key = api_key
         self.model = model
@@ -870,6 +905,8 @@ class ClaudeAnalystClient:
         self._cached_fundamentals: dict | None = None
         self._cached_qualitative: dict | None = None
         self.artifact_dir = artifact_dir
+        self.temperature = temperature
+        self.top_k = top_k
 
     def _default_transport(self, request_payload: dict) -> dict:
         """Default transport — pops model/timeout keys from payload to select per-stage model."""
@@ -879,7 +916,7 @@ class ClaudeAnalystClient:
             request_payload,
             api_key=self.api_key,
             model=model,
-            max_tokens=8192,
+            max_tokens=16384,
         )
 
     @property
@@ -944,7 +981,10 @@ class ClaudeAnalystClient:
             "model": model,
             "system": system_prompt,
             "messages": [{"role": "user", "content": user_prompt}],
+            "temperature": self.temperature,
         }
+        if self.top_k is not None:
+            request_payload["top_k"] = self.top_k
         if schema is not None:
             request_payload["output_schema"] = schema
         if timeout is not None:

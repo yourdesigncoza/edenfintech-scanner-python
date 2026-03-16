@@ -15,6 +15,18 @@ from typing import Callable
 
 _ELIDE_MIN_BYTES = 2048
 
+# Section markers that precede large JSON blobs in prompts.
+# Each marker is followed by a JSON object that may be duplicated across calls.
+_SECTION_MARKERS = [
+    "SECTOR CONTEXT:\n",
+    "EVIDENCE CONTEXT:\n",
+    "STAGE 1 FUNDAMENTALS:\n",
+    "STAGE 1 FUNDAMENTALS (for reference",
+    "STAGE 2 QUALITATIVE:\n",
+    "ANALYST OVERLAY (analysis_inputs",
+    "RAW CANDIDATE DATA",
+]
+
 
 class LlmInteractionLog:
     """Accumulates LLM call records for terminal display and markdown export."""
@@ -118,9 +130,8 @@ class LlmInteractionLog:
             system = inp.get("system", "")
             if system:
                 lines.append("### System Prompt\n")
-                block = f"```\n{system}\n```\n"
-                block = _elide_repeated_blocks(block, seen_blocks, i)
-                lines.append(block)
+                system = _elide_repeated_sections(system, seen_blocks, i)
+                lines.append(f"```\n{system}\n```\n")
 
             messages = inp.get("messages", [])
             for msg in messages:
@@ -129,9 +140,8 @@ class LlmInteractionLog:
                 if isinstance(content, list):
                     content = json.dumps(content, indent=2)
                 lines.append(f"### {role.title()} Message\n")
-                block = f"```\n{content}\n```\n"
-                block = _elide_repeated_blocks(block, seen_blocks, i)
-                lines.append(block)
+                content = _elide_repeated_sections(content, seen_blocks, i)
+                lines.append(f"```\n{content}\n```\n")
 
             if inp.get("output_schema"):
                 lines.append("### Output Schema\n")
@@ -148,51 +158,74 @@ class LlmInteractionLog:
         return path
 
 
-def _elide_repeated_blocks(
-    text: str,
+def _extract_json_block(text: str, start: int) -> str | None:
+    """Extract a JSON object from *text* starting at *start* by brace-counting.
+
+    Returns the substring ``{...}`` (inclusive) or ``None`` if braces don't
+    balance within the remaining text.
+    """
+    if start >= len(text) or text[start] != "{":
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def _elide_repeated_sections(
+    content: str,
     seen: dict[str, tuple[int, int]],
     call_number: int,
 ) -> str:
-    """Replace fenced code blocks that duplicate earlier calls with references.
+    """Replace duplicated large subsections within a raw prompt string.
 
-    Args:
-        text: markdown string containing ```...``` blocks
-        seen: {md5_hex: (first_call_number, byte_size)} — mutated in place
-        call_number: current call number (1-based)
+    Finds known section markers (SECTOR CONTEXT, EVIDENCE CONTEXT, STAGE N ...)
+    followed by a JSON object.  On first occurrence the content is kept and its
+    hash is recorded.  On subsequent occurrences the JSON blob is replaced with
+    an ``[ELIDED]`` reference.
 
-    Returns:
-        text with duplicate blocks replaced by [ELIDED: ...] references
+    Also falls back to whole-content hashing when the entire string >= 2 KB and
+    contains no recognised markers (catches forwarded stage outputs that are
+    pure JSON).
     """
-    def _replace(match: re.Match) -> str:
-        fence_open = match.group(1)  # e.g. "```json" or "```"
-        body = match.group(2)
-        # Whole-block dedup
-        if len(body) >= _ELIDE_MIN_BYTES:
-            digest = hashlib.md5(body.encode()).hexdigest()
-            if digest in seen:
-                first_call, size = seen[digest]
-                size_kb = size // 1024
-                return f"{fence_open}\n[ELIDED: ~{size_kb}KB — identical content logged in Call {first_call} above]\n```"
-            seen[digest] = (call_number, len(body))
-        # Line-level dedup for large lines within non-duplicate blocks
-        lines = body.split("\n")
-        changed = False
-        for j, line in enumerate(lines):
-            if len(line) < _ELIDE_MIN_BYTES:
-                continue
-            line_key = f"L:{hashlib.md5(line.encode()).hexdigest()}"
-            if line_key in seen:
-                first_call, size = seen[line_key]
-                size_kb = size // 1024
-                lines[j] = f"[ELIDED: ~{size_kb}KB — identical content logged in Call {first_call} above]"
-                changed = True
-            else:
-                seen[line_key] = (call_number, len(line))
-        if changed:
-            return f"{fence_open}\n" + "\n".join(lines) + "\n```"
-        return match.group(0)
+    result = content
+    for marker in _SECTION_MARKERS:
+        idx = result.find(marker)
+        if idx == -1:
+            continue
+        # Find the opening '{' after the marker
+        json_start = result.find("{", idx + len(marker))
+        if json_start == -1:
+            continue
+        json_block = _extract_json_block(result, json_start)
+        if json_block is None or len(json_block) < _ELIDE_MIN_BYTES:
+            continue
+        digest = hashlib.md5(json_block.encode()).hexdigest()
+        if digest in seen:
+            first_call, size = seen[digest]
+            size_kb = size // 1024
+            placeholder = f"[ELIDED: ~{size_kb}KB — identical to Call {first_call} above]"
+            result = result[:json_start] + placeholder + result[json_start + len(json_block):]
+        else:
+            seen[digest] = (call_number, len(json_block))
 
-    return re.sub(r"(```[a-z]*)\n(.*?)\n```", _replace, text, flags=re.DOTALL)
+    # Whole-content fallback: catches pure-JSON forwarded payloads (e.g.
+    # the synthesis overlay passed to both validator calls).
+    if len(result) >= _ELIDE_MIN_BYTES and result == content:
+        # No markers matched — try hashing the entire content.
+        digest = hashlib.md5(content.encode()).hexdigest()
+        if digest in seen:
+            first_call, size = seen[digest]
+            size_kb = size // 1024
+            return f"[ELIDED: ~{size_kb}KB — identical content logged in Call {first_call} above]"
+        seen[digest] = (call_number, len(content))
+
+    return result
 
 
 def wrap_transport(

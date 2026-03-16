@@ -45,9 +45,10 @@ def detect_contradictions(overlay_candidate: dict, raw_candidate: dict) -> list[
     if derived is None or base_case is None:
         return contradictions
 
-    # 1. Revenue check
+    # 1. Revenue check — use forward_revenue_b (post-divestiture go-forward
+    # entity) when available, otherwise fall back to latest_revenue_b.
     claim_revenue = base_case.get("revenue_b")
-    actual_revenue = derived.get("latest_revenue_b")
+    actual_revenue = derived.get("forward_revenue_b") or derived.get("latest_revenue_b")
     if claim_revenue is not None and actual_revenue is not None and actual_revenue > 0:
         pct_gap = abs(claim_revenue - actual_revenue) / actual_revenue
         if pct_gap > 0.50:
@@ -192,10 +193,12 @@ class RedTeamValidatorClient:
         *,
         model: str = "claude-haiku-4-5-20251001",
         transport: ValidatorTransport | None = None,
+        temperature: float = 0.6,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.transport = transport or self._default_transport
+        self.temperature = temperature
 
     def _default_transport(self, request_payload: dict) -> dict:
         """Default transport using the Anthropic SDK."""
@@ -311,6 +314,7 @@ class RedTeamValidatorClient:
                 }
             ],
             "output_schema": VALIDATOR_OUTPUT_SCHEMA,
+            "temperature": self.temperature,
         }
 
         response = self.transport(request_payload)
@@ -345,8 +349,6 @@ PREMORTEM_OUTPUT_SCHEMA: dict = {
             "properties": {
                 "conditions": {
                     "type": "array",
-                    "minItems": 5,
-                    "maxItems": 5,
                     "items": {
                         "type": "object",
                         "required": [
@@ -394,10 +396,12 @@ class PreMortemValidatorClient:
         *,
         model: str = "claude-haiku-4-5-20251001",
         transport: ValidatorTransport | None = None,
+        temperature: float = 0.6,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.transport = transport or self._default_transport
+        self.temperature = temperature
 
     def _default_transport(self, request_payload: dict) -> dict:
         return default_anthropic_transport(
@@ -491,6 +495,7 @@ class PreMortemValidatorClient:
                 }
             ],
             "output_schema": PREMORTEM_OUTPUT_SCHEMA,
+            "temperature": self.temperature,
         }
 
         response = self.transport(request_payload)

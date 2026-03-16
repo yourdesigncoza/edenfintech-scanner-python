@@ -22,6 +22,7 @@ from typing import Callable
 
 from edenfintech_scanner_bootstrap.epistemic_reviewer import (
     CONCRETE_SOURCE_MARKERS,
+    _NAMED_SOURCE_PATTERN,
     is_weak_evidence,
 )
 
@@ -92,9 +93,12 @@ def score_evidence_quality(
         review_note = entry.get("review_note", "")
         if not review_note:
             continue
+        # Skip system-generated synthetic entries — not real evidence citations
+        if "[SYNTHETIC ROLLUP]" in review_note or "[SYSTEM REPAIR]" in review_note:
+            continue
         total_citations += 1
         lower = review_note.lower()
-        if any(marker in lower for marker in CONCRETE_SOURCE_MARKERS):
+        if any(marker in lower for marker in CONCRETE_SOURCE_MARKERS) or bool(_NAMED_SOURCE_PATTERN.search(lower)):
             concrete_count += 1
         elif is_weak_evidence(review_note):
             vague_count += 1
@@ -131,20 +135,26 @@ VALID_TI_CATEGORIES = frozenset({
     "tech_disruption", "market_structure",
 })
 
-# Expanded anti-anchoring regex: catches "15%", "15 percent",
-# "probability of 0.15", "fifteen percent", "1 in 5", etc.
-# NOTE: bare 0.\d+ removed — it false-flagged financial ratios like
-# "interest coverage = 0.26".  Now requires probability/chance/likelihood/odds
-# context around the decimal.
+# Anti-anchoring regex: catches ONLY probability-context numbers.
+# All branches require proximity to probability/chance/likelihood/odds/confidence.
+# Financial metrics ("15% margin", "coverage 0.26x") are NOT anchoring.
+_PROBABILITY_CONTEXT = r'(?:probability|chance|likelihood|odds|confidence)'
 _THESIS_ANCHORING_PATTERN = re.compile(
-    r'\b(?:100|\d{1,2}(?:\.\d+)?)\s*(?:%|percent|pct)'
-    r'|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|'
+    # "30% probability", "15% chance", "100% likelihood"
+    r'\b(?:100|\d{1,2}(?:\.\d+)?)\s*(?:%|percent|pct)\s+' + _PROBABILITY_CONTEXT
+    # "probability of 30%", "chance is 15%"
+    + r'|' + _PROBABILITY_CONTEXT + r'\s+(?:is\s+|of\s+|at\s+)?(?:100|\d{1,2}(?:\.\d+)?)\s*(?:%|percent|pct)'
+    # "probability of 0.15", "likelihood at 0.6"
+    + r'|' + _PROBABILITY_CONTEXT + r'\s+(?:is\s+|of\s+|at\s+)?0\.\d+'
+    # "0.15 probability", "0.6 likelihood"
+    + r'|0\.\d+\s+' + _PROBABILITY_CONTEXT
+    # "thirty percent chance", "fifty percent probability"
+    + r'|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|'
     r'eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|'
     r'nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)'
-    r'\s+percent\b'
-    r'|(?:(?:probability|chance|likelihood|odds)\s+(?:is\s+|of\s+|at\s+)?0\.\d+)'
-    r'|(?:0\.\d+\s+(?:probability|chance|likelihood|odds))'
-    r'|\b\d+\s+(?:in|out\s+of)\s+\d+\b',
+    r'\s+percent\s+' + _PROBABILITY_CONTEXT
+    # "1 in 5 chance", "3 out of 10 odds"
+    + r'|\b\d+\s+(?:in|out\s+of)\s+\d+\s+' + _PROBABILITY_CONTEXT,
     flags=re.IGNORECASE,
 )
 
@@ -239,10 +249,12 @@ def detect_thesis_break(
         imminent = True
         thesis_invalidation["imminent_break_flag"] = True
 
-    # Step 1: Anti-anchoring — reject if any condition text contains
-    # probability numbers
+    # Step 1: Anti-anchoring — reject if rationale text contains
+    # probability numbers. We only check 'rationale' because
+    # risk_description and early_warning_metric legitimately contain
+    # financial thresholds (e.g., "revenue decline >15%", "IC below 0.20x").
     for condition in conditions:
-        for text_field in ("risk_description", "early_warning_metric"):
+        for text_field in ("rationale",):
             text = condition.get(text_field, "")
             if _THESIS_ANCHORING_PATTERN.search(text):
                 return {

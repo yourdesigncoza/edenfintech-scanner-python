@@ -91,34 +91,57 @@ CONCRETE_SOURCE_MARKERS = [
     # SEC / IR sources
     "10-k", "10-q", "earnings call", "sec filing",
     "annual report", "press release", "investor presentation",
+    "proxy statement", "def 14a", "proxy",
     # FMP quantitative sources
     "fmp", "financial statements", "income statement",
     "balance sheet", "cash flow statement", "key metrics",
+    "financial data",
     # Gemini qualitative sources
     "seeking alpha", "fintool", "grounded search",
     # Gemini grounding URLs
     "vertexaisearch", "grounding-api-redirect",
     # Common Gemini-sourced domains
     "businesswire", "bioworld", "spglobal", "simplywall",
-    "morningstar", "tradingeconomics",
-    # Sector knowledge
-    "sector knowledge",
+    "morningstar", "tradingeconomics", "zacks", "gurufocus",
+    # Sector / pipeline context
+    "sector knowledge", "sector context",
+]
+
+# Pattern for named-source citations: Per 'Article Title Here' (straight or smart quotes)
+_NAMED_SOURCE_PATTERN = re.compile(r"(?:per|confirmed by|per\s+stage)\s+['\u2018\u2019\u201c\u201d][^'\u2018\u2019\u201c\u201d]{5,}['\u2018\u2019\u201c\u201d]", re.IGNORECASE)
+
+# Separate markers for the epistemic reviewer, which operates behind an
+# information barrier and can only cite the pipeline artifacts it receives.
+EPISTEMIC_CONTEXT_MARKERS = [
+    "trailing financial ratios", "audited statements",
+    "thesis summary", "catalysts", "key risks",
+    "base case assumptions", "worst case assumptions",
+    "moat assessment", "dominant risk type",
 ]
 
 _URL_PATTERN = re.compile(r'https?://\S+')
 
 
-def is_weak_evidence(evidence_text: str) -> bool:
+def is_weak_evidence(
+    evidence_text: str,
+    *,
+    context_markers: list[str] | None = None,
+) -> bool:
     """Check if evidence citation lacks concrete source.
 
     NO_EVIDENCE and empty strings return False -- they are honest
     declarations or missing, not weak citations.
+
+    Pass *context_markers* to override the default CONCRETE_SOURCE_MARKERS.
+    The epistemic reviewer should pass EPISTEMIC_CONTEXT_MARKERS since it
+    operates behind an information barrier and can only cite pipeline artifacts.
     """
     lower = evidence_text.lower().strip()
     if not lower or lower == "no_evidence":
         return False
 
-    has_concrete = any(marker in lower for marker in CONCRETE_SOURCE_MARKERS) or bool(_URL_PATTERN.search(lower))
+    markers = context_markers if context_markers is not None else CONCRETE_SOURCE_MARKERS
+    has_concrete = any(marker in lower for marker in markers) or bool(_URL_PATTERN.search(lower))
     has_vague = any(pattern in lower for pattern in WEAK_EVIDENCE_PATTERNS)
     return has_vague or not has_concrete
 
@@ -204,10 +227,12 @@ class EpistemicReviewerClient:
         *,
         model: str = "claude-haiku-4-5-20251001",
         transport: EpistemicReviewerTransport | None = None,
+        temperature: float = 0.2,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.transport = transport or self._default_transport
+        self.temperature = temperature
 
     def _default_transport(self, request_payload: dict) -> dict:
         """Default transport using the Anthropic SDK."""
@@ -261,7 +286,8 @@ class EpistemicReviewerClient:
             "",
             "EVIDENCE RULES:",
             "- Each answer MUST include an evidence_source field.",
-            "- evidence_source must be either a CONCRETE named source (e.g., '10-K FY2024', 'Q3 earnings call')",
+            "- evidence_source must cite the SPECIFIC context you used (e.g., 'Trailing financial ratios (audited statements)',",
+            "  'Thesis summary', 'Catalysts', 'Key Risks', 'Base case assumptions')",
             "  or the exact string 'NO_EVIDENCE' if you cannot find supporting evidence.",
             "- Do NOT use vague citations like 'industry reports' or 'general consensus'.",
             "- Honest NO_EVIDENCE is better than a vague citation.",
@@ -318,6 +344,7 @@ class EpistemicReviewerClient:
             "system": self._build_system_prompt(),
             "messages": [{"role": "user", "content": self._build_user_prompt(review_input)}],
             "output_schema": EPISTEMIC_OUTPUT_SCHEMA,
+            "temperature": self.temperature,
         }
 
         response = self.transport(request_payload)
@@ -360,7 +387,9 @@ def epistemic_review(
     for key in _PCS_QUESTION_KEYS:
         answer_data = pcs_answers.get(key, {})
         evidence_source = answer_data.get("evidence_source", "")
-        weak_evidence_flags[key] = is_weak_evidence(evidence_source)
+        weak_evidence_flags[key] = is_weak_evidence(
+            evidence_source, context_markers=EPISTEMIC_CONTEXT_MARKERS,
+        )
         if evidence_source.upper() == "NO_EVIDENCE":
             no_evidence_count += 1
 

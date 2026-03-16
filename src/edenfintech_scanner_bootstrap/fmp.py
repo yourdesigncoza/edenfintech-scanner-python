@@ -412,6 +412,29 @@ def _fcf_margin_history_pct(income_statements: list[dict], cash_flow_statements:
     return history
 
 
+def _extract_forward_revenue_b(
+    income_statements: list[dict],
+    exclude_years: set[str],
+) -> float | None:
+    """Extract revenue from the most recent excluded year as forward revenue.
+
+    When a year is excluded due to incomplete data but still has a valid
+    revenue figure (e.g., post-divestiture FY2025), that revenue represents
+    the go-forward entity's revenue base. Returns None if no excluded year
+    has positive revenue.
+    """
+    if not exclude_years:
+        return None
+    for statement in _sorted_desc(income_statements):
+        year = _year_from_date(statement.get("date"))
+        if year not in exclude_years:
+            continue
+        revenue = statement.get("revenue")
+        if isinstance(revenue, (int, float)) and revenue > 0:
+            return _round4(float(revenue) / 1_000_000_000)
+    return None
+
+
 def _check_statement_completeness(
     income_statements: list[dict],
     cash_flows: list[dict],
@@ -524,6 +547,7 @@ def build_raw_candidate_from_fmp(ticker: str, client: FmpClient) -> dict:
     trough_revenue_b = min(item["revenue_b"] for item in revenue_history) if revenue_history else None
     latest_fcf_margin_pct = fcf_history[0]["fcf_margin_pct"] if fcf_history else None
     trough_fcf_margin_pct = min(item["fcf_margin_pct"] for item in fcf_history) if fcf_history else None
+    forward_revenue_b = _extract_forward_revenue_b(income_statements, exclude_years)
 
     return {
         "ticker": ticker,
@@ -550,6 +574,7 @@ def build_raw_candidate_from_fmp(ticker: str, client: FmpClient) -> dict:
                 "fcf_margin_history_pct": fcf_history,
                 "shares_m_latest": shares_m,
                 "latest_revenue_b": latest_revenue_b,
+                "forward_revenue_b": forward_revenue_b,
                 "trough_revenue_b": trough_revenue_b,
                 "latest_fcf_margin_pct": latest_fcf_margin_pct,
                 "trough_fcf_margin_pct": trough_fcf_margin_pct,

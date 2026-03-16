@@ -120,6 +120,58 @@ class TestWriteMarkdownElision(unittest.TestCase):
             content = path.read_text()
             self.assertNotIn("[ELIDED:", content)
 
+    def test_evidence_context_elided_in_user_message(self):
+        """EVIDENCE CONTEXT duplicated across user messages is elided."""
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            log = LlmInteractionLog()
+            evidence = '{"market_snapshot": {"price": 2.68, "data": "' + "z" * 3000 + '"}}'
+            for i in range(2):
+                log.record(
+                    f"agent_{i}", "model",
+                    {
+                        "system": f"stage {i} instructions",
+                        "messages": [{"role": "user", "content": f"Ticker: X\n\nEVIDENCE CONTEXT:\n{evidence}\n\nEnd."}],
+                    },
+                    {"text": "ok", "stop_reason": "end_turn"},
+                )
+            path = log.write_markdown(Path(tmp))
+            content = path.read_text()
+            self.assertEqual(content.count("z" * 3000), 1)
+            self.assertIn("[ELIDED:", content)
+
+    def test_whole_content_fallback_elides_pure_json(self):
+        """Pure JSON user messages (forwarded stage output) are elided via whole-content fallback."""
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            log = LlmInteractionLog()
+            large_json = '{"overlay": "' + "w" * 5000 + '"}'
+            # Call 1 produces it as a response (not elided)
+            log.record(
+                "analyst/synthesis", "model",
+                {"system": "synth prompt", "messages": []},
+                {"text": large_json, "stop_reason": "end_turn"},
+            )
+            # Call 2 receives it as user message (should be elided if identical)
+            log.record(
+                "validator/red_team", "model",
+                {"system": "validator prompt", "messages": [{"role": "user", "content": large_json}]},
+                {"text": "ok", "stop_reason": "end_turn"},
+            )
+            # Call 3 also receives it as user message (should also be elided)
+            log.record(
+                "validator/pre_mortem", "model",
+                {"system": "pre-mortem prompt", "messages": [{"role": "user", "content": large_json}]},
+                {"text": "ok", "stop_reason": "end_turn"},
+            )
+            path = log.write_markdown(Path(tmp))
+            content = path.read_text()
+            # Response appears once (never elided), first user message registers,
+            # second user message should be elided
+            self.assertIn("[ELIDED:", content)
+
 
 class TestInferAgent(unittest.TestCase):
     """_infer_agent label inference from system prompts."""

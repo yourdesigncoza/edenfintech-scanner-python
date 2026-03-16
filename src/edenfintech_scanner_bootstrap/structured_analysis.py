@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 from .assets import load_json, structured_analysis_schema_path
 from .schemas import SchemaValidationError, validate_all_errors, validate_instance
 
+logger = logging.getLogger(__name__)
 
 RAW_CHECK_ORDER = ["solvency", "dilution", "revenue_growth", "roic", "valuation"]
 RAW_PCS_ORDER = ["q1_operational_feasibility", "q2_risk_bounded", "q3_precedent_grounded", "q4_downside_steelmanned", "q5_catalyst_concrete"]
@@ -147,16 +149,27 @@ def _validate_provenance_coverage(
     if not isinstance(provenance, list) or not provenance:
         raise ValueError(f"structured candidate {candidate.get('ticker')} must include field_provenance before apply")
 
-    provenance_by_path: dict[str, dict] = {}
+    # Deduplicate provenance (defense-in-depth — LLM may emit duplicates
+    # even after the repair step in analyst.py deduplicates).
+    seen_paths: set[str] = set()
+    clean_provenance: list[dict] = []
     for item in provenance:
         if not isinstance(item, dict):
             raise ValueError(f"structured candidate {candidate.get('ticker')} has malformed field_provenance entries")
         field_path = item.get("field_path")
-        status = item.get("status")
         if not isinstance(field_path, str) or not field_path:
             raise ValueError(f"structured candidate {candidate.get('ticker')} has field_provenance without field_path")
-        if field_path in provenance_by_path:
-            raise ValueError(f"structured candidate {candidate.get('ticker')} has duplicate provenance for {field_path}")
+        if field_path in seen_paths:
+            logger.warning("Deduplicating provenance for %s in %s", field_path, candidate.get("ticker"))
+            continue
+        seen_paths.add(field_path)
+        clean_provenance.append(item)
+    candidate["field_provenance"] = clean_provenance
+
+    provenance_by_path: dict[str, dict] = {}
+    for item in clean_provenance:
+        field_path = item["field_path"]
+        status = item.get("status")
         provenance_by_path[field_path] = item
         if not allow_machine_draft and status in DRAFT_PROVENANCE_STATUSES:
             raise ValueError(

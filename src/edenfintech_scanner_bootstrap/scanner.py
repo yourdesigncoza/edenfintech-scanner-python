@@ -198,6 +198,12 @@ def _process_single_ticker(
         epistemic_transport=epistemic_transport,
     )
 
+    # Persist hardening result to raw/ directory for observability
+    raw_dir = out_dir / ticker / "raw"
+    if raw_dir.is_dir():
+        hardening_path = raw_dir / "hardening-result.json"
+        hardening_path.write_text(json.dumps(flags, indent=2))
+
     # Build scan-input payload
     from .importers import build_scan_input
     from .structured_analysis import apply_structured_analysis

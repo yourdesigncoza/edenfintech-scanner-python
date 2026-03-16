@@ -191,18 +191,23 @@ def auto_analyze(
                 transport=transport,
                 synthesis_timeout=config.llm_synthesis_timeout,
                 artifact_dir=out_dir,
+                temperature=config.analyst_temperature,
+                top_k=1,
             )
         if validator_client is None:
             validator_client = RedTeamValidatorClient(
                 api_key, transport=transport,
+                temperature=config.adversarial_temperature,
             )
         if premortem_client is None:
             premortem_client = PreMortemValidatorClient(
                 api_key, transport=transport,
+                temperature=config.adversarial_temperature,
             )
         if epistemic_client is None:
             epistemic_client = EpistemicReviewerClient(
                 api_key, transport=transport,
+                temperature=config.reviewer_temperature,
             )
 
     # Step 5: Retry loop

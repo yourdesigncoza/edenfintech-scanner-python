@@ -32,7 +32,7 @@ def default_anthropic_transport(
     *,
     api_key: str | None,
     model: str,
-    max_tokens: int = 8192,
+    max_tokens: int = 16384,
 ) -> dict:
     """Shared default transport using the Anthropic SDK.
 
@@ -49,6 +49,13 @@ def default_anthropic_transport(
         system=request_payload["system"],
         messages=request_payload["messages"],
     )
+    # Sampling parameters (injected by agent clients for tiered temperature)
+    temperature = request_payload.get("temperature")
+    if temperature is not None:
+        create_kwargs["temperature"] = temperature
+    top_k = request_payload.get("top_k")
+    if top_k is not None:
+        create_kwargs["top_k"] = top_k
     if output_schema:
         create_kwargs["output_config"] = {
             "format": {
