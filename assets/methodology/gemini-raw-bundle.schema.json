@@ -129,6 +129,18 @@
             "search_scope": {
               "type": "string",
               "minLength": 1
+            },
+            "search_directives": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "context_entities": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
             }
           }
         },

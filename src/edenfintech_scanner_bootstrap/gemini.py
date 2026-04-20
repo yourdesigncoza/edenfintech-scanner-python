@@ -12,6 +12,7 @@ from .schemas import SchemaValidationError, validate_instance
 
 
 DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"
+GEMINI_PROMPT_VERSION = "v2-2026-04-20"
 EVIDENCE_ARRAY_KEYS = [
     "research_notes",
     "catalyst_evidence",
@@ -43,7 +44,53 @@ ALLOWED_BUNDLE_KEYS = {"title", "scan_date", "version", "scan_parameters", "meth
 ALLOWED_SCAN_PARAMETER_KEYS = {"scan_mode", "focus", "api"}
 ALLOWED_CANDIDATE_KEYS = {"ticker", "cluster_name", "industry", "gemini_context"}
 ALLOWED_GEMINI_CONTEXT_KEYS = {"prompt_context", *EVIDENCE_ARRAY_KEYS}
-ALLOWED_PROMPT_CONTEXT_KEYS = {"model", "research_question", "search_scope"}
+ALLOWED_PROMPT_CONTEXT_KEYS = {"model", "research_question", "search_scope", "search_directives", "context_entities"}
+# Each entry: (directive_sentence, target_evidence_array)
+SEARCH_DIRECTIVES: tuple[tuple[str, str], ...] = (
+    (
+        "Credit-rating actions: latest Fitch, Moody's, and S&P ratings with date and outlook change; "
+        "any downgrades in the last 18 months "
+        "(or equivalent rating agency filings in the issuer's jurisdiction).",
+        "risk_evidence",
+    ),
+    (
+        "Debt maturity schedule: principal amount and year for every tranche due within 36 months; "
+        "identify any maturity wall concentrated in a single year "
+        "(or equivalent debt-disclosure filings in the issuer's jurisdiction).",
+        "risk_evidence",
+    ),
+    (
+        "Revenue concentration: top 5 customers (or payers, for healthcare; merchants, for payments; "
+        "tenants, for real estate) by revenue share with most recent percentage; "
+        "recent contract losses, non-renewals, or renegotiations "
+        "(or equivalent customer-concentration disclosure in the issuer's jurisdiction).",
+        "risk_evidence",
+    ),
+    (
+        "Regulatory and rate-setting cadence: material regulatory actions, pricing or reimbursement rate changes "
+        "relevant to the issuer's sector (e.g. CMS for healthcare, FERC for energy, CFPB/OCC for financial services), "
+        "FTC/DOJ enforcement actions, consent decrees, and state AG actions with dates and status "
+        "(or equivalent regulatory filings in the issuer's jurisdiction).",
+        "catalyst_evidence",
+    ),
+    (
+        "Insider transactions from Form 4 in the trailing 12 months: buys versus sells by named executives, "
+        "dollar value, and any 10b5-1 plan disclosures "
+        "(or equivalent insider-filing disclosures in the issuer's jurisdiction).",
+        "management_observations",
+    ),
+    (
+        "Executive compensation structure from the most recent DEF 14A proxy: which metrics performance pay "
+        "is tied to (FCF, EPS, EBITDA, revenue, ROIC), target thresholds, and any broken-promise history "
+        "(or equivalent compensation filing in the issuer's jurisdiction).",
+        "compensation_evidence",
+    ),
+    (
+        "Competitive landscape: recent market-share shifts, new entrants, competitor product launches, "
+        "and structural changes to industry dynamics that could threaten the company's competitive position.",
+        "moat_observations",
+    ),
+)
 ALLOWED_EVIDENCE_ITEM_KEYS = {"claim", "source_title", "source_url", "source_type", "published_at", "confidence_note"}
 
 GeminiTransport = Callable[[str, dict[str, str], dict], dict]
@@ -152,12 +199,40 @@ def _extract_response_text(payload: dict) -> str:
     raise RuntimeError("Gemini response did not include a supported text payload")
 
 
-def _candidate_prompt(ticker: str, research_question: str, search_scope: str) -> str:
-    return (
+def _format_directives_block(directives: tuple[tuple[str, str], ...]) -> str:
+    lines = ["Search directives — for each directive, populate the specified evidence array:"]
+    for directive, array_name in directives:
+        lines.append(f"- {directive} → populate `{array_name}`")
+    lines.append(
+        "\nCRITICAL: Adhere strictly to the 8-array output schema. Do NOT create new arrays. "
+        "Do NOT editorialize or emit verdicts, decisions, probabilities, pass/reject judgments, "
+        "or cluster status. Extract factual evidence with sources only."
+    )
+    return "\n".join(lines)
+
+
+def _candidate_prompt(
+    ticker: str,
+    research_question: str,
+    search_scope: str,
+    *,
+    entities: dict[str, str] | None = None,
+    directives: tuple[tuple[str, str], ...] | None = None,
+) -> str:
+    parts: list[str] = [
         "Collect raw qualitative research evidence for the EdenFinTech scanner.\n"
         f"Ticker: {ticker}\n"
         f"Research question: {research_question}\n"
         f"Search scope: {search_scope}\n"
+    ]
+    if entities:
+        entity_lines = ["Company context:"]
+        for key, value in entities.items():
+            entity_lines.append(f"  {key}: {value}")
+        parts.append("\n".join(entity_lines) + "\n")
+    if directives:
+        parts.append(_format_directives_block(directives) + "\n")
+    parts.append(
         "Return only sourced evidence snippets. Do not return screening verdicts, pass/reject decisions, "
         "probability bands, final catalyst classifications, or cluster status judgments.\n"
         "Populate each evidence item with a concise claim, source title, and source URL.\n"
@@ -165,6 +240,7 @@ def _candidate_prompt(ticker: str, research_question: str, search_scope: str) ->
         "what metrics is pay tied to (revenue, EPS, EBITDA, FCF, ROIC)? "
         "Note insider buying/selling patterns."
     )
+    return "".join(parts)
 
 
 class GeminiClient:
@@ -185,12 +261,30 @@ class GeminiClient:
         *,
         research_question: str,
         search_scope: str,
+        context_entities: dict[str, str] | None = None,
+        directives: tuple[tuple[str, str], ...] | None = None,
     ) -> dict:
+        prompt_ctx: dict = {
+            "model": self.model,
+            "research_question": research_question,
+            "search_scope": search_scope,
+        }
+        if directives is not None:
+            prompt_ctx["search_directives"] = [f"{d} → {a}" for d, a in directives]
+        if context_entities is not None:
+            prompt_ctx["context_entities"] = context_entities
+
         payload = {
             "contents": [
                 {
                     "role": "user",
-                    "parts": [{"text": _candidate_prompt(ticker, research_question, search_scope)}],
+                    "parts": [{"text": _candidate_prompt(
+                        ticker,
+                        research_question,
+                        search_scope,
+                        entities=context_entities,
+                        directives=directives,
+                    )}],
                 }
             ],
             "tools": [{"googleSearch": {}}, {"urlContext": {}}],
@@ -219,11 +313,7 @@ class GeminiClient:
         candidate = {
             "ticker": ticker,
             "gemini_context": {
-                "prompt_context": {
-                    "model": self.model,
-                    "research_question": research_question,
-                    "search_scope": search_scope,
-                },
+                "prompt_context": prompt_ctx,
                 **raw_context,
             },
         }
@@ -250,12 +340,15 @@ def build_gemini_bundle(
     scan_mode: str = "specific_tickers",
     focus: str | None = None,
     research_question: str | None = None,
+    context_entities: dict[str, dict[str, str]] | None = None,
+    directives: tuple[tuple[str, str], ...] | None = None,
 ) -> dict:
     if not tickers:
         raise ValueError("tickers must not be empty")
 
     search_scope = focus or ", ".join(tickers)
     resolved_question = research_question or "Collect sourced qualitative research evidence relevant to this scan."
+    resolved_directives = directives if directives is not None else SEARCH_DIRECTIVES
     bundle = {
         "title": f"EdenFinTech Gemini Raw Bundle - {', '.join(tickers)}",
         "scan_date": str(date.today()),
@@ -274,6 +367,8 @@ def build_gemini_bundle(
                 ticker,
                 research_question=resolved_question,
                 search_scope=search_scope,
+                context_entities=(context_entities or {}).get(ticker),
+                directives=resolved_directives,
             )
             for ticker in tickers
         ],
@@ -290,6 +385,8 @@ def build_gemini_bundle_with_config(
     model: str = DEFAULT_GEMINI_MODEL,
     focus: str | None = None,
     research_question: str | None = None,
+    context_entities: dict[str, dict[str, str]] | None = None,
+    directives: tuple[tuple[str, str], ...] | None = None,
 ) -> dict:
     app_config = config or load_config()
     app_config.require("gemini_api_key")
@@ -299,6 +396,8 @@ def build_gemini_bundle_with_config(
         client=client,
         focus=focus,
         research_question=research_question,
+        context_entities=context_entities,
+        directives=directives,
     )
 
 

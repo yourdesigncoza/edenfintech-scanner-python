@@ -1,0 +1,21 @@
+Collect raw qualitative research evidence for the EdenFinTech scanner.
+Ticker: ACME
+Research question: Collect sourced qualitative research evidence relevant to this scan.
+Search scope: ACME
+Company context:
+  company_name: Acme Corp
+  sector: Healthcare
+  industry: Medical Distribution
+Search directives — for each directive, populate the specified evidence array:
+- Credit-rating actions: latest Fitch, Moody's, and S&P ratings with date and outlook change; any downgrades in the last 18 months (or equivalent rating agency filings in the issuer's jurisdiction). → populate `risk_evidence`
+- Debt maturity schedule: principal amount and year for every tranche due within 36 months; identify any maturity wall concentrated in a single year (or equivalent debt-disclosure filings in the issuer's jurisdiction). → populate `risk_evidence`
+- Revenue concentration: top 5 customers (or payers, for healthcare; merchants, for payments; tenants, for real estate) by revenue share with most recent percentage; recent contract losses, non-renewals, or renegotiations (or equivalent customer-concentration disclosure in the issuer's jurisdiction). → populate `risk_evidence`
+- Regulatory and rate-setting cadence: material regulatory actions, pricing or reimbursement rate changes relevant to the issuer's sector (e.g. CMS for healthcare, FERC for energy, CFPB/OCC for financial services), FTC/DOJ enforcement actions, consent decrees, and state AG actions with dates and status (or equivalent regulatory filings in the issuer's jurisdiction). → populate `catalyst_evidence`
+- Insider transactions from Form 4 in the trailing 12 months: buys versus sells by named executives, dollar value, and any 10b5-1 plan disclosures (or equivalent insider-filing disclosures in the issuer's jurisdiction). → populate `management_observations`
+- Executive compensation structure from the most recent DEF 14A proxy: which metrics performance pay is tied to (FCF, EPS, EBITDA, revenue, ROIC), target thresholds, and any broken-promise history (or equivalent compensation filing in the issuer's jurisdiction). → populate `compensation_evidence`
+- Competitive landscape: recent market-share shifts, new entrants, competitor product launches, and structural changes to industry dynamics that could threaten the company's competitive position. → populate `moat_observations`
+
+CRITICAL: Adhere strictly to the 8-array output schema. Do NOT create new arrays. Do NOT editorialize or emit verdicts, decisions, probabilities, pass/reject judgments, or cluster status. Extract factual evidence with sources only.
+Return only sourced evidence snippets. Do not return screening verdicts, pass/reject decisions, probability bands, final catalyst classifications, or cluster status judgments.
+Populate each evidence item with a concise claim, source title, and source URL.
+Include executive compensation structure from proxy filings (DEF 14A) if available: what metrics is pay tied to (revenue, EPS, EBITDA, FCF, ROIC)? Note insider buying/selling patterns.

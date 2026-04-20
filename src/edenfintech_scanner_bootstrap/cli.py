@@ -12,7 +12,7 @@ from .analyst import ClaudeAnalystClient, generate_llm_analysis_draft
 from .field_generation import build_structured_analysis_draft_file
 from .fmp import FmpClient, build_fmp_bundle_with_config, write_fmp_bundle
 from .holding_review import review_holding
-from .gemini import GeminiClient, build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
+from .gemini import GEMINI_PROMPT_VERSION, GeminiClient, build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles, write_gemini_bundle
 from .importers import build_scan_input_file, load_raw_scan_template_text
 from .judge import run_judge_file
 from .live_scan import run_live_scan
@@ -268,7 +268,7 @@ def _cmd_cache_status(cache_dir: Path | None = None) -> int:
         print("FMP cache: empty")
 
     # Gemini cache
-    gemini_store = GeminiCacheStore(_default_gemini_cache_dir())
+    gemini_store = GeminiCacheStore(_default_gemini_cache_dir(), prompt_version=GEMINI_PROMPT_VERSION)
     gemini_status = gemini_store.status()
     if gemini_status["count"] > 0:
         print(f"\nGemini cache: {gemini_status['count']} entries (TTL: {gemini_status['ttl_seconds']}s)")
@@ -284,7 +284,7 @@ def _cmd_cache_status(cache_dir: Path | None = None) -> int:
 def _cmd_cache_clear(cache_dir: Path | None = None) -> int:
     fmp_store = FmpCacheStore(cache_dir or _default_fmp_cache_dir())
     fmp_store.clear()
-    gemini_store = GeminiCacheStore(_default_gemini_cache_dir())
+    gemini_store = GeminiCacheStore(_default_gemini_cache_dir(), prompt_version=GEMINI_PROMPT_VERSION)
     gemini_store.clear()
     print("FMP and Gemini caches cleared.")
     return 0
@@ -336,7 +336,7 @@ def _cmd_run_live_scan(
     from .fmp import _default_transport
     store = FmpCacheStore(_default_fmp_cache_dir())
     fmp_transport = cached_transport(_default_transport, store, fresh=fresh)
-    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir())
+    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir(), prompt_version=GEMINI_PROMPT_VERSION)
     result = run_live_scan(
         tickers,
         out_dir=Path(out_dir),
@@ -435,7 +435,7 @@ def _cmd_build_review_package(
     from .fmp import _default_transport
     store = FmpCacheStore(_default_fmp_cache_dir())
     fmp_transport = cached_transport(_default_transport, store, fresh=fresh)
-    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir())
+    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir(), prompt_version=GEMINI_PROMPT_VERSION)
     result = build_review_package(
         tickers,
         out_dir=Path(out_dir),
@@ -532,7 +532,7 @@ def _cmd_auto_scan(tickers: list[str], out_dir: str | None, fresh: bool = False)
     from .fmp import _default_transport
     store = FmpCacheStore(_default_fmp_cache_dir())
     transport = cached_transport(_default_transport, store, fresh=fresh)
-    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir())
+    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir(), prompt_version=GEMINI_PROMPT_VERSION)
     llm_log = LlmInteractionLog()
     result = auto_scan(
         tickers,
@@ -564,7 +564,7 @@ def _cmd_sector_scan(
     store = FmpCacheStore(_default_fmp_cache_dir())
     transport = cached_transport(_default_transport, store, fresh=fresh)
     fmp_client = FmpClient(config.fmp_api_key, transport=transport)
-    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir())
+    gemini_cache = None if fresh else GeminiCacheStore(_default_gemini_cache_dir(), prompt_version=GEMINI_PROMPT_VERSION)
     result = sector_scan(
         sector_name,
         config=config,

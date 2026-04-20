@@ -141,18 +141,29 @@ GEMINI_DEFAULT_TTL = 14_400  # 4 hours
 
 
 class GeminiCacheStore:
-    """Disk-backed cache for Gemini qualitative research, keyed by ticker."""
+    """Disk-backed cache for Gemini qualitative research, keyed by ticker + prompt version."""
 
-    def __init__(self, cache_dir: Path, ttl: int = GEMINI_DEFAULT_TTL) -> None:
+    def __init__(
+        self,
+        cache_dir: Path,
+        ttl: int = GEMINI_DEFAULT_TTL,
+        prompt_version: str | None = None,
+    ) -> None:
         self.cache_dir = cache_dir
         self.ttl = ttl
+        self.prompt_version = prompt_version
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
+    def _stem(self, ticker: str) -> str:
+        if self.prompt_version:
+            return f"{ticker}__{self.prompt_version}"
+        return ticker
+
     def _data_path(self, ticker: str) -> Path:
-        return self.cache_dir / f"{ticker}.json"
+        return self.cache_dir / f"{self._stem(ticker)}.json"
 
     def _meta_path(self, ticker: str) -> Path:
-        return self.cache_dir / f"{ticker}.meta.json"
+        return self.cache_dir / f"{self._stem(ticker)}.meta.json"
 
     def get(self, ticker: str) -> dict | None:
         """Return cached candidate data if present and not expired, else None."""
@@ -194,7 +205,8 @@ class GeminiCacheStore:
                       if not f.name.endswith(".meta.json")]
         entries: list[dict] = []
         for data_file in data_files:
-            ticker = data_file.stem
+            stem = data_file.stem
+            ticker = stem.split("__")[0]
             meta_path = self._meta_path(ticker)
             expires_at = None
             if meta_path.exists():

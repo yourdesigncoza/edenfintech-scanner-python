@@ -81,19 +81,32 @@ def _import_gemini_context(raw_candidate: dict) -> dict | None:
         gemini_context.get("prompt_context"),
         f"{raw_candidate['ticker']}.gemini_context.prompt_context",
     )
-    imported = {
-        "prompt_context": {
-            "model": _require_str(prompt_context.get("model"), f"{raw_candidate['ticker']}.gemini_context.prompt_context.model"),
-            "research_question": _require_str(
-                prompt_context.get("research_question"),
-                f"{raw_candidate['ticker']}.gemini_context.prompt_context.research_question",
-            ),
-            "search_scope": _require_str(
-                prompt_context.get("search_scope"),
-                f"{raw_candidate['ticker']}.gemini_context.prompt_context.search_scope",
-            ),
-        }
+    imported_prompt_context: dict = {
+        "model": _require_str(prompt_context.get("model"), f"{raw_candidate['ticker']}.gemini_context.prompt_context.model"),
+        "research_question": _require_str(
+            prompt_context.get("research_question"),
+            f"{raw_candidate['ticker']}.gemini_context.prompt_context.research_question",
+        ),
+        "search_scope": _require_str(
+            prompt_context.get("search_scope"),
+            f"{raw_candidate['ticker']}.gemini_context.prompt_context.search_scope",
+        ),
     }
+    if "search_directives" in prompt_context:
+        imported_prompt_context["search_directives"] = _coerce_string_list(
+            prompt_context["search_directives"],
+            f"{raw_candidate['ticker']}.gemini_context.prompt_context.search_directives",
+        )
+    if "context_entities" in prompt_context:
+        raw_entities = _require_dict(
+            prompt_context["context_entities"],
+            f"{raw_candidate['ticker']}.gemini_context.prompt_context.context_entities",
+        )
+        imported_prompt_context["context_entities"] = {
+            k: _require_str(v, f"{raw_candidate['ticker']}.gemini_context.prompt_context.context_entities.{k}")
+            for k, v in raw_entities.items()
+        }
+    imported = {"prompt_context": imported_prompt_context}
     for evidence_key in RAW_GEMINI_EVIDENCE_ORDER:
         raw_items = _require_list(gemini_context.get(evidence_key, []), f"{raw_candidate['ticker']}.gemini_context.{evidence_key}")
         imported[evidence_key] = [

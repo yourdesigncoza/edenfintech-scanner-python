@@ -9,7 +9,7 @@ from .cache import GeminiCacheStore
 from .config import AppConfig, load_config
 from .field_generation import generate_structured_analysis_draft
 from .fmp import FmpTransport, build_fmp_bundle_with_config, write_fmp_bundle
-from .gemini import DEFAULT_GEMINI_MODEL, GeminiTransport, build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles
+from .gemini import DEFAULT_GEMINI_MODEL, GEMINI_PROMPT_VERSION, GeminiTransport, build_gemini_bundle_with_config, merge_fmp_and_gemini_bundles
 from .importers import build_scan_input
 from .pipeline import run_scan
 from .reporting import write_execution_log
@@ -100,6 +100,26 @@ def run_live_scan(
         print("FAILED")
         raise
 
+    # Build per-ticker company context from FMP profile data for Gemini disambiguation
+    fmp_context_entities: dict[str, dict[str, str]] = {}
+    for cand in fmp_bundle.get("raw_candidates", []):
+        t = cand.get("ticker", "")
+        if not t:
+            continue
+        profile = cand.get("profile", {})
+        entity: dict[str, str] = {}
+        if company_name := profile.get("companyName"):
+            entity["company_name"] = company_name
+        if sector := profile.get("sector"):
+            entity["sector"] = sector
+        if industry := cand.get("industry") or profile.get("industry"):
+            entity["industry"] = industry
+        desc = profile.get("description", "")
+        if desc:
+            entity["description_excerpt"] = desc[:200]
+        if entity:
+            fmp_context_entities[t] = entity
+
     try:
         if gemini_cache is not None:
             cached_candidates: dict[str, dict] = {}
@@ -121,6 +141,7 @@ def run_live_scan(
                     focus=focus,
                     research_question=research_question,
                     model=gemini_model,
+                    context_entities=fmp_context_entities or None,
                 )
                 for cand in partial.get("raw_candidates", []):
                     ticker_key = cand.get("ticker", "")
@@ -137,6 +158,7 @@ def run_live_scan(
                 focus=focus,
                 research_question=research_question,
                 model=gemini_model,
+                context_entities=fmp_context_entities or None,
             )
         gemini_path = out_dir / "gemini-raw.json"
         _write_json(gemini_path, gemini_bundle)

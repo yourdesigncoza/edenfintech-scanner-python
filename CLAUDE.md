@@ -110,6 +110,17 @@ Forward return refresh, thesis integrity checks, sell triggers, replacement gate
 - `tests/fixtures/analyst/`, `tests/fixtures/reviewer/`, `tests/fixtures/validator/`, `tests/fixtures/sector/` — LLM agent response fixtures
 - `assets/fixtures/regression/` — Regression snapshot fixtures
 
+## Code Research
+
+A graphify knowledge graph is at `graphify-out/`. Before using Glob or Grep to explore the codebase, check the graph first:
+
+- Read `graphify-out/GRAPH_REPORT.md` for god nodes, community structure, and surprising connections
+- Use `/graphify query "<question>"` to traverse the graph for architectural questions
+- Use `/graphify explain "<node>"` to understand a specific module or concept
+- Use `/graphify path "A" "B"` to trace how two components connect
+
+Run `/graphify --update` after modifying source files to keep the graph current.
+
 ## Key Conventions
 
 - Activate `.venv` before running any commands
