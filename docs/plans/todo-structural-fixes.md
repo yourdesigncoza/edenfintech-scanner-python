@@ -1,5 +1,9 @@
 # TODO: Structural Fixes — Attend to This FIRST
 
+> **Read `2026-09-15-session-notes.md` first** (same directory). It explains why
+> this project came off the shelf, what it is now commercially, and carries the
+> two decisions Phase 5 is waiting on.
+
 > **⚠️ START HERE next work session.** This plan must be completed before any new
 > feature work. The project review of 2026-07-06 found that CI has been red since
 > 2026-03-13, two of four hardening gates are dead code, and the financial-math
